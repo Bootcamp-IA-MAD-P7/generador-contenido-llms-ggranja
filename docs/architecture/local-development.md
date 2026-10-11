@@ -78,6 +78,19 @@ python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000
 The API exposes `/readiness`, `/docs`, `/redoc` and `/openapi.json`.
 With `LLM_PROVIDER=groq` or `LLM_PROVIDER=ollama`, `POST /drafts` uses the selected API-side adapter and returns editable drafts for human review. The browser never receives provider credentials.
 
+Authentication is configured locally with `AUTH_USERNAME`,
+`AUTH_PASSWORD_HASH` and `AUTH_SECRET`. For a team deployment, replace the
+single-user pair with `AUTH_USERS_JSON`, a JSON object whose values are PBKDF2
+hashes compatible with `apps.api.auth.hash_password` (generate them with the
+local helper or a deployment secret manager); each newly created draft or
+plan is owned by the signed-in username. Login attempts are bounded by
+`AUTH_LOGIN_MAX_ATTEMPTS` and `AUTH_LOGIN_WINDOW_SECONDS`.
+
+Hosted deployments must set `AUTH_REQUIRE_HTTPS=true`. When a trusted reverse
+proxy terminates TLS, set `AUTH_TRUST_PROXY=true` and configure that proxy to
+overwrite `X-Forwarded-Proto`; never trust a client-supplied forwarding header
+when the API is directly reachable. Local development keeps these flags false.
+
 To ingest the official Coll Amunt! PDF into the ignored local RAG store, place
 the downloaded source at `.local/rag/sources/2025-Coll-Amunt-Llibre-_compressed.pdf`
 and run `python scripts/ingest_collamunt.py`. The command preserves Catalan

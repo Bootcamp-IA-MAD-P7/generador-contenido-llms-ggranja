@@ -3,11 +3,19 @@
 from datetime import date
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Path
+from fastapi import Depends, FastAPI, HTTPException, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from apps.api.auth import AuthSettings, authenticate, issue_token, require_session
+from apps.api.auth import (
+    AuthSettings,
+    issue_token,
+    login_attempt_key,
+    login_attempt_limiter,
+    require_secure_transport,
+    require_session,
+    resolve_username,
+)
 from apps.api.copy_formulas import approach_for_formula, select_copy_approach
 from apps.api.drafting import ChannelAdaptedDraftService, EditableTextDraft
 from apps.api.editorial_review import (
@@ -125,16 +133,30 @@ class LoginResponse(BaseModel):
 
 
 @app.post("/auth/login", response_model=LoginResponse)
-def login(request: LoginRequest) -> LoginResponse:
+def login(request: LoginRequest, http_request: Request) -> LoginResponse:
     """Exchange the local credentials for a signed, expiring session token."""
 
     settings = AuthSettings.from_environment()
     if settings is None:
         raise HTTPException(status_code=503, detail="authentication is not configured")
-    if not authenticate(settings, request.username, request.password):
+    require_secure_transport(http_request, settings)
+    attempt_key = login_attempt_key(http_request, request.username)
+    if not login_attempt_limiter.allow(
+        attempt_key,
+        max_attempts=settings.login_max_attempts,
+        window_seconds=settings.login_window_seconds,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail="too many login attempts; try again later",
+            headers={"Retry-After": str(settings.login_window_seconds)},
+        )
+    username = resolve_username(settings, request.username, request.password)
+    if username is None:
         raise HTTPException(status_code=401, detail="invalid credentials")
-    token, expires_at = issue_token(settings)
-    return LoginResponse(access_token=token, username=settings.username, expires_at=expires_at)
+    login_attempt_limiter.reset(attempt_key)
+    token, expires_at = issue_token(settings, username=username)
+    return LoginResponse(access_token=token, username=username, expires_at=expires_at)
 
 
 @app.get("/auth/me")
@@ -142,8 +164,11 @@ def current_user(username: str = Depends(require_session)) -> dict[str, str]:
     return {"username": username}
 
 
-@app.post("/drafts", response_model=DraftResponse, dependencies=[Depends(require_session)])
-def create_drafts(request: DraftRequest) -> DraftResponse:
+@app.post("/drafts", response_model=DraftResponse)
+def create_drafts(
+    request: DraftRequest,
+    username: str = Depends(require_session),
+) -> DraftResponse:
     """Generate editable drafts through the configured provider.
 
     The API owns provider credentials. The browser receives only reviewable
@@ -196,6 +221,7 @@ def create_drafts(request: DraftRequest) -> DraftResponse:
         content = EditorialReviewService.from_generated_draft(
             draft,
             content_id=content_id,
+            owner_username=username,
             brand_id=request.brand_id,
             business_id=request.business_id,
         )
@@ -210,26 +236,28 @@ def create_drafts(request: DraftRequest) -> DraftResponse:
     )
 
 
-def _get_editorial_content(content_id: str) -> EditorialContent:
-    """Resolve a record ID; session authentication does not authorize a tenant.
+def _get_editorial_content(content_id: str, username: str) -> EditorialContent:
+    """Resolve content owned by the authenticated user.
 
-    Routes apply the signed session dependency, but this MVP still has no
-    per-business access control. Treat ``content_id`` as an identifier only.
+    Records created before ownership was introduced remain readable as legacy
+    local data. New records always receive the authenticated owner.
     """
-    content = editorial_store.get(content_id)
+    content = editorial_store.get(content_id, owner_username=username)
     if content is None:
         raise HTTPException(status_code=404, detail="content_id not found")
     return content
 
 
-@app.get("/drafts/{content_id}", response_model=EditorialContent, dependencies=[Depends(require_session)])
-def get_draft(content_id: str) -> EditorialContent:
-    return _get_editorial_content(content_id)
+@app.get("/drafts/{content_id}", response_model=EditorialContent)
+def get_draft(content_id: str, username: str = Depends(require_session)) -> EditorialContent:
+    return _get_editorial_content(content_id, username)
 
 
-@app.get("/drafts/{content_id}/review", response_model=ReviewStatusResponse, dependencies=[Depends(require_session)])
-def get_review_status(content_id: str) -> ReviewStatusResponse:
-    content = _get_editorial_content(content_id)
+@app.get("/drafts/{content_id}/review", response_model=ReviewStatusResponse)
+def get_review_status(
+    content_id: str, username: str = Depends(require_session)
+) -> ReviewStatusResponse:
+    content = _get_editorial_content(content_id, username)
     return ReviewStatusResponse(
         content_id=content.content_id,
         state=content.state,
@@ -237,9 +265,13 @@ def get_review_status(content_id: str) -> ReviewStatusResponse:
     )
 
 
-@app.post("/drafts/{content_id}/review", response_model=EditorialContent, dependencies=[Depends(require_session)])
-def record_review(content_id: str, request: ReviewRequest) -> EditorialContent:
-    content = _get_editorial_content(content_id)
+@app.post("/drafts/{content_id}/review", response_model=EditorialContent)
+def record_review(
+    content_id: str,
+    request: ReviewRequest,
+    username: str = Depends(require_session),
+) -> EditorialContent:
+    content = _get_editorial_content(content_id, username)
     if not request.reviewer_ref.strip():
         raise HTTPException(status_code=422, detail="reviewer_ref must contain text")
     try:
@@ -266,12 +298,15 @@ def record_review(content_id: str, request: ReviewRequest) -> EditorialContent:
 @app.post(
     "/drafts/{content_id}/regenerate",
     response_model=EditorialContent,
-    dependencies=[Depends(require_session)],
 )
-def regenerate_draft(content_id: str, request: RegenerateRequest) -> EditorialContent:
+def regenerate_draft(
+    content_id: str,
+    request: RegenerateRequest,
+    username: str = Depends(require_session),
+) -> EditorialContent:
     """Regenerate from the exact recorded feedback without approving the result."""
 
-    content = _get_editorial_content(content_id)
+    content = _get_editorial_content(content_id, username)
     if not request.feedback.strip():
         raise HTTPException(status_code=422, detail="feedback must contain text")
     if request.top_k <= 0:
@@ -319,9 +354,13 @@ def regenerate_draft(content_id: str, request: RegenerateRequest) -> EditorialCo
     return editorial_store.create(regenerated)
 
 
-@app.patch("/drafts/{content_id}", response_model=EditorialContent, dependencies=[Depends(require_session)])
-def edit_draft(content_id: str, request: ManualEditRequest) -> EditorialContent:
-    content = _get_editorial_content(content_id)
+@app.patch("/drafts/{content_id}", response_model=EditorialContent)
+def edit_draft(
+    content_id: str,
+    request: ManualEditRequest,
+    username: str = Depends(require_session),
+) -> EditorialContent:
+    content = _get_editorial_content(content_id, username)
     try:
         updated = EditorialReviewService.manual_edit(
             content, caption=request.caption, cta=request.cta
@@ -342,42 +381,46 @@ class PlanItemDayRequest(BaseModel):
     day: date
 
 
-@app.post("/plans", response_model=StoredEditorialPlan, dependencies=[Depends(require_session)])
-def save_plan(plan: EditorialPlan) -> StoredEditorialPlan:
+@app.post("/plans", response_model=StoredEditorialPlan)
+def save_plan(
+    plan: EditorialPlan,
+    username: str = Depends(require_session),
+) -> StoredEditorialPlan:
     """Persist an already validated plan for later calendar rendering."""
 
+    owned_plan = plan.model_copy(update={"owner_username": username})
     plan_id = editorial_plan_store.create_id()
-    editorial_plan_store.save(plan_id, plan)
-    return StoredEditorialPlan(plan_id=plan_id, plan=plan)
+    editorial_plan_store.save(plan_id, owned_plan)
+    return StoredEditorialPlan(plan_id=plan_id, plan=owned_plan)
 
 
-@app.get("/plans/{plan_id}", response_model=StoredEditorialPlan, dependencies=[Depends(require_session)])
-def get_plan(plan_id: str) -> StoredEditorialPlan:
-    plan = editorial_plan_store.get(plan_id)
+@app.get("/plans/{plan_id}", response_model=StoredEditorialPlan)
+def get_plan(plan_id: str, username: str = Depends(require_session)) -> StoredEditorialPlan:
+    plan = editorial_plan_store.get(plan_id, owner_username=username)
     if plan is None:
         raise HTTPException(status_code=404, detail="plan_id not found")
     return StoredEditorialPlan(plan_id=plan_id, plan=plan)
 
 
-@app.get("/plans", response_model=list[StoredEditorialPlan], dependencies=[Depends(require_session)])
-def list_plans() -> list[StoredEditorialPlan]:
+@app.get("/plans", response_model=list[StoredEditorialPlan])
+def list_plans(username: str = Depends(require_session)) -> list[StoredEditorialPlan]:
     return [
         StoredEditorialPlan(plan_id=plan_id, plan=plan)
-        for plan_id, plan in editorial_plan_store.list()
+        for plan_id, plan in editorial_plan_store.list(owner_username=username)
     ]
 
 
 @app.patch(
     "/plans/{plan_id}/items/{item_index}/day",
     response_model=StoredEditorialPlan,
-    dependencies=[Depends(require_session)],
 )
 def update_plan_item_day(
     plan_id: str,
     request: PlanItemDayRequest,
     item_index: int = Path(ge=0),
+    username: str = Depends(require_session),
 ) -> StoredEditorialPlan:
-    plan = editorial_plan_store.get(plan_id)
+    plan = editorial_plan_store.get(plan_id, owner_username=username)
     if plan is None:
         raise HTTPException(status_code=404, detail="plan_id not found")
     try:

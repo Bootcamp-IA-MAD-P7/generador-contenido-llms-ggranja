@@ -96,6 +96,11 @@ class EnvironmentConfigTests(unittest.TestCase):
                 "AUTH_PASSWORD_HASH",
                 "AUTH_SECRET",
                 "AUTH_TOKEN_TTL_MINUTES",
+                "AUTH_USERS_JSON",
+                "AUTH_LOGIN_MAX_ATTEMPTS",
+                "AUTH_LOGIN_WINDOW_SECONDS",
+                "AUTH_REQUIRE_HTTPS",
+                "AUTH_TRUST_PROXY",
             },
         )
         self.assertRegex(assignment_text, r"(?m)^GROQ_API_KEY=$")

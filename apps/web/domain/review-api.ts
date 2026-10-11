@@ -13,6 +13,9 @@ export type ApiDraft = {
   evidence_provenance: DraftEvidence[];
   supported_claims: string[];
   unsupported_claims: string[];
+  copy_approach?: string | null;
+  copy_formula?: string | null;
+  approach_rationale?: string | null;
 };
 export type ApiEditorialContent = {
   content_id: string;

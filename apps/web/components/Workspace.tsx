@@ -5,13 +5,14 @@ import type {
   BrandId,
   BriefForm,
   CommerceId,
+  CopyApproachInfo,
   DraftPreparationStatus,
   HistoryEntry,
   LocalDraft,
   DraftEvidence,
   ViewId,
 } from "../domain/types.ts";
-import { canStartGeneration, parseDraftResponse, type GenerationState } from "../domain/draft-generation.ts";
+import { canStartGeneration, parseCopyApproach, parseDraftResponse, type GenerationState } from "../domain/draft-generation.ts";
 import { createDraft, getDraft, reviewDraft, updateDraft, mapBriefToApi, type ApiEditorialContent } from "../domain/review-api.ts";
 import { savePlan, type EditorialPlan } from "../domain/plans-api.ts";
 import { brandContexts, dashboardFixtures, draftFixtures, getBriefDefaults, historyFixtures } from "../domain/fixtures.ts";
@@ -100,6 +101,7 @@ export function Workspace() {
   const [previewEvidence, setPreviewEvidence] = useState<DraftEvidence[]>([]);
   const [supportedClaims, setSupportedClaims] = useState<string[]>([]);
   const [unsupportedClaims, setUnsupportedClaims] = useState<string[]>([]);
+  const [copyApproach, setCopyApproach] = useState<CopyApproachInfo | null>(null);
   const [reviewerName, setReviewerName] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
   const [reviewFeedback, setReviewFeedback] = useState("");
@@ -116,6 +118,7 @@ export function Workspace() {
     setPreviewEvidence([]);
     setSupportedClaims([]);
     setUnsupportedClaims([]);
+    setCopyApproach(null);
     setReviewerName("");
     setReviewMessage("");
     setReviewFeedback("");
@@ -239,6 +242,7 @@ export function Workspace() {
     setPreviewEvidence(content.draft.evidence_provenance ?? []);
     setSupportedClaims(content.draft.supported_claims ?? []);
     setUnsupportedClaims(content.draft.unsupported_claims ?? []);
+    setCopyApproach(parseCopyApproach(content.draft));
     setStatus(content.state === "approved_final" ? "approved" : "pending-review");
     setReviewFeedback(content.review?.feedback ?? "");
     updateSessionDraft({ copy: content.draft.caption, status: content.state === "approved_final" ? "approved" : "review", reviewer: content.review?.reviewer_ref });
@@ -302,6 +306,7 @@ export function Workspace() {
     setPreviewEvidence([]);
     setSupportedClaims([]);
     setUnsupportedClaims([]);
+    setCopyApproach(null);
     const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
     const format = brief.format === "Reel" ? "reel" : brief.format === "Carrusel" ? "carousel" : "single_image";
     const ragBusinessId = brand.id === "coll-amunt" ? activeCommerce?.businessId : undefined;
@@ -319,12 +324,12 @@ export function Workspace() {
         id: `session-${activeContext.account}-${++sessionDraftSequence.current}`,
         backendId: parsed.contentIds[0], title: brief.campaign.trim() || brief.objective.trim(), platform: brief.platform,
         format: brief.format, status: "review", updatedAt: "Ahora · sesión actual", brief, copy: parsed.copy,
-        evidenceProvenance: parsed.evidenceProvenance, supportedClaims: parsed.supportedClaims, unsupportedClaims: parsed.unsupportedClaims,
+        evidenceProvenance: parsed.evidenceProvenance, supportedClaims: parsed.supportedClaims, unsupportedClaims: parsed.unsupportedClaims, copyApproach: parsed.copyApproach,
       };
-      const associatedDrafts = parsedDrafts.map((draft, index) => index === 0 ? sessionDraft : ({ ...sessionDraft, id: `session-${activeContext.account}-${++sessionDraftSequence.current}`, backendId: draft.contentIds[0], copy: draft.copy, evidenceProvenance: draft.evidenceProvenance, supportedClaims: draft.supportedClaims, unsupportedClaims: draft.unsupportedClaims }));
+      const associatedDrafts = parsedDrafts.map((draft, index) => index === 0 ? sessionDraft : ({ ...sessionDraft, id: `session-${activeContext.account}-${++sessionDraftSequence.current}`, backendId: draft.contentIds[0], copy: draft.copy, evidenceProvenance: draft.evidenceProvenance, supportedClaims: draft.supportedClaims, unsupportedClaims: draft.unsupportedClaims, copyApproach: draft.copyApproach }));
       setSessionDraftsByContext((current) => ({ ...current, [activeContext.account]: [...associatedDrafts, ...(current[activeContext.account] ?? [])] }));
       setActiveSessionDraftId(sessionDraft.id); setActiveBackendId(parsed.contentIds[0]);
-      setPreviewCopy(parsed.copy); setPreviewEvidence(parsed.evidenceProvenance); setSupportedClaims(parsed.supportedClaims); setUnsupportedClaims(parsed.unsupportedClaims);
+      setPreviewCopy(parsed.copy); setPreviewEvidence(parsed.evidenceProvenance); setSupportedClaims(parsed.supportedClaims); setUnsupportedClaims(parsed.unsupportedClaims); setCopyApproach(parsed.copyApproach);
       setStatus("pending-review"); setGenerationState("success");
       recordSessionHistory(sessionDraft.id, "review", "Se preparó el borrador con la API y quedó pendiente de revisión humana.");
       return;
@@ -400,6 +405,7 @@ export function Workspace() {
     setPreviewEvidence(draft.evidenceProvenance ?? []);
     setSupportedClaims(draft.supportedClaims ?? []);
     setUnsupportedClaims(draft.unsupportedClaims ?? []);
+    setCopyApproach(draft.copyApproach ?? null);
     setReviewerName(draft.reviewer ?? "");
     setReviewFeedback("");
     setReviewMessage("");
@@ -494,6 +500,7 @@ export function Workspace() {
           evidenceProvenance={previewEvidence}
           supportedClaims={supportedClaims}
           unsupportedClaims={unsupportedClaims}
+          copyApproach={copyApproach}
           reviewerName={reviewerName}
           reviewMessage={reviewMessage}
            reviewFeedback={reviewFeedback}

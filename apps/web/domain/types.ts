@@ -93,9 +93,13 @@ export type LocalDraft = {
   evidenceProvenance?: DraftEvidence[];
   supportedClaims?: string[];
   unsupportedClaims?: string[];
+  copyApproach?: CopyApproachInfo | null;
   reviewer?: string;
   backendId?: string;
 };
+
+/** Suggested copy approach and optional formula, with the reason, shown to the human reviewer. */
+export type CopyApproachInfo = { approach: string; formula: string; rationale: string };
 
 export type DraftEvidence = {
   business_id: string;

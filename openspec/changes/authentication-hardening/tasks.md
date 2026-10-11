@@ -17,4 +17,4 @@
 
 - [x] Add focused tests for rate limiting, multiple users, ownership and HTTPS.
 - [x] Run Python, web, SDD, OpenSpec and diff validation.
-- [ ] Record CI evidence and open the implementation PR toward `dev`.
+- [x] Record CI evidence and open the implementation PR toward `dev`.

@@ -1,7 +1,7 @@
 # Issue #115 — Authentication hardening evidence
 
-Status: implementation prepared on `feat/115-auth-hardening`; implementation
-PR toward `dev` is opened after the local verification below.
+Status: implementation PR #116 is open from `feat/115-auth-hardening` toward
+`dev`.
 
 ## Scope verified
 
@@ -45,6 +45,9 @@ npm exec --yes --package=@fission-ai/openspec@1.13.2 -- openspec validate --all 
 git diff --check
 passed
 ```
+
+GitHub Actions for commit `f2311fe353ce2231b21c53aa667d9ae06b216a19` also
+passed: Git Conventions run `188` and SDD Harness run `203`.
 
 The web build is not part of this evidence: the local runner has the known
 `uv_resident_set_memory` `ENOENT` failure during `next build`, unrelated to

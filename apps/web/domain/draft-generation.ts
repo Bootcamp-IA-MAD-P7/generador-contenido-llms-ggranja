@@ -6,6 +6,7 @@ export type DraftGenerationResult = {
   evidenceProvenance: DraftEvidence[];
   supportedClaims: string[];
   unsupportedClaims: string[];
+  copyApproach: CopyApproachInfo | null;
   contentIds: string[];
 };
 
@@ -16,6 +17,9 @@ type DraftApiResponse = {
     evidence_provenance?: unknown;
     supported_claims?: unknown;
     unsupported_claims?: unknown;
+    copy_approach?: unknown;
+    copy_formula?: unknown;
+    approach_rationale?: unknown;
   }>;
   review_state?: string;
   content_ids?: string[];
@@ -70,7 +74,7 @@ export async function parseDraftResponse(
   if (contentIds.length !== (payload.drafts?.length ?? 0)) {
     throw new Error("La API no devolvió identificadores para todos los borradores.");
   }
-  return { copy, reviewState: "pending_human_review", evidenceProvenance, supportedClaims, unsupportedClaims, contentIds };
+  return { copy, reviewState: "pending_human_review", evidenceProvenance, supportedClaims, unsupportedClaims, copyApproach: parseCopyApproach(draft), contentIds };
 }
 
 function normalizeEvidence(item: unknown, expectedBusinessId?: string): DraftEvidence[] {
@@ -87,7 +91,7 @@ function normalizeEvidence(item: unknown, expectedBusinessId?: string): DraftEvi
     ...(typeof value.source_uri === "string" ? { source_uri: value.source_uri } : {}),
   }];
 }
-import type { DraftEvidence } from "./types.ts";
+import type { CopyApproachInfo, DraftEvidence } from "./types.ts";
 
 
 export function dedupeEvidence(evidence: DraftEvidence[]): DraftEvidence[] {
@@ -99,4 +103,12 @@ export function dedupeEvidence(evidence: DraftEvidence[]): DraftEvidence[] {
       ]),
     ).values(),
   );
+}
+
+/** Reads the optional approach fields; absent or blank values mean no formula was suggested. */
+export function parseCopyApproach(draft: { copy_approach?: unknown; copy_formula?: unknown; approach_rationale?: unknown }): CopyApproachInfo | null {
+  const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+  const approach = text(draft.copy_approach);
+  if (!approach) return null;
+  return { approach, formula: text(draft.copy_formula), rationale: text(draft.approach_rationale) };
 }

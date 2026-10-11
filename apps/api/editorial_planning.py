@@ -122,6 +122,7 @@ class PlannedItem(BaseModel):
     bucket_key: str = Field(min_length=1)
     platform: Platform
     format: Format
+    scheduled_on: date | None = None
     review_state: str | None = None
     evidence: dict[str, object] = Field(default_factory=dict)
 
@@ -178,6 +179,8 @@ class EditorialPlan(BaseModel):
                 raise ValueError("planned item uses an unknown bucket key")
             if item.strategy_version != self.strategy_version:
                 raise ValueError("planned item strategy version must match the plan")
+            if item.scheduled_on is not None and not self.starts_on <= item.scheduled_on <= self.ends_on:
+                raise ValueError("planned item day must be within the plan date range")
         return self
 
     def summary(self) -> dict[str, dict[str, int]]:
@@ -287,6 +290,22 @@ def assign_item(
     return plan.model_copy(update={"items": (*plan.items, item)})
 
 
+def reschedule_item(plan: EditorialPlan, item_index: int, scheduled_on: date) -> EditorialPlan:
+    """Return a validated plan with one item's day changed inside the cycle range."""
+
+    if type(item_index) is not int or item_index < 0 or item_index >= len(plan.items):
+        raise IndexError("planned item index does not exist")
+    if not plan.starts_on <= scheduled_on <= plan.ends_on:
+        raise ValueError("planned item day must be within the plan date range")
+    updated_items = list(plan.items)
+    updated_items[item_index] = updated_items[item_index].model_copy(
+        update={"scheduled_on": scheduled_on}
+    )
+    return EditorialPlan.model_validate(
+        {**plan.model_dump(), "items": updated_items}
+    )
+
+
 __all__ = [
     "StrategyBucket",
     "ContentMixStrategy",
@@ -298,4 +317,5 @@ __all__ = [
     "EditorialPlan",
     "create_plan",
     "assign_item",
+    "reschedule_item",
 ]

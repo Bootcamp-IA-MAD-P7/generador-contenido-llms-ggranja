@@ -8,6 +8,10 @@ export type CalendarItem = {
   format: string;
   date: string;
   synthetic?: boolean;
+  planId?: string;
+  itemIndex?: number;
+  startsOn?: string;
+  endsOn?: string;
 };
 
 export type UndatedItem = Omit<CalendarItem, "date">;

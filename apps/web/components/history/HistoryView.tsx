@@ -14,11 +14,13 @@ const filters: { id: Filter; label: string }[] = [
 ];
 
 export function HistoryView({
+  welcomeName,
   contextName,
   entries,
   drafts,
   onOpenDraft,
 }: {
+  welcomeName: string;
   contextName: string;
   entries: HistoryEntry[];
   drafts: LocalDraft[];
@@ -33,6 +35,7 @@ export function HistoryView({
     <section aria-labelledby="view-title">
       <header className={styles.head}>
         <Kicker>Historial editorial</Kicker>
+        <p className={styles.welcome}>Te damos la bienvenida, {welcomeName}</p>
         <h1 id="view-title" className={styles.title}>{contextName}</h1>
         <p className={styles.lede}>Actividad sintética del contexto seleccionado, sin conexiones externas.</p>
         <SyntheticNotice>Ejemplos sintéticos y actividad de esta sesión</SyntheticNotice>

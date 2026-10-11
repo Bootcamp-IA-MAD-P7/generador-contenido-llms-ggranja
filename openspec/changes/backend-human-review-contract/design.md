@@ -16,9 +16,17 @@ feedback is required for the regeneration request. `PATCH /drafts/{content_id}`
 uses the existing manual-edit service and keeps the item pending. No endpoint
 publishes, schedules or exports a non-approved item.
 
-Missing IDs return 404 and service transition failures return 409. Pydantic
-validation errors remain 422. The opaque `content_id` provides logical record
-segregation only; it is not an authenticated tenant boundary. Because this
-iteration introduces no authentication or identity verification, the API does
-not claim to authorize a caller for a `business_id`, and clients must not treat
-the preserved business metadata as an access-control decision.
+Missing IDs return 404, mismatched or absent recorded regeneration feedback
+returns 409, and Pydantic validation errors remain 422. The signed session
+dependency protects editorial and plan routes; `/readiness` and `/auth/login`
+remain public, while `/auth/me` validates the session and returns its username.
+The opaque `content_id` still does not provide tenant authorization: a valid
+session is not a per-business access-control decision.
+
+Regeneration accepts the current `GuidedBrief`, the exact feedback already
+recorded through the review endpoint, and an optional formula code. The
+`EditorialReviewService` validates the lifecycle transition and source feedback,
+creates a new content ID and lineage, and leaves the result pending human
+review. The selected formula is only a prompt scaffold. Evidence-dependent
+formulas remain available when facts are missing but the API rationale and
+prompt explicitly prohibit concrete proof or invented results.

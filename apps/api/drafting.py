@@ -80,6 +80,8 @@ class ChannelAdaptedDraftService:
         retrieved_contexts: Sequence[RetrievedBusinessContext] = (),
         business_id: str | None = None,
         grounding_enabled: bool = False,
+        approach_override: tuple[CopyApproach, str] | None = None,
+        reviewer_feedback: str | None = None,
     ) -> list[EditableTextDraft]:
         """Return one grounded, editable text draft for every selected channel."""
 
@@ -89,7 +91,14 @@ class ChannelAdaptedDraftService:
         ):
             raise ValueError("retrieved context must match the requested business_id")
         return [
-            self._draft_for_channel(brief, channel, contexts, grounding_enabled)
+            self._draft_for_channel(
+                brief,
+                channel,
+                contexts,
+                grounding_enabled,
+                approach_override,
+                reviewer_feedback,
+            )
             for channel in brief.platforms
         ]
 
@@ -99,16 +108,19 @@ class ChannelAdaptedDraftService:
         channel: Platform,
         retrieved_contexts: Sequence[RetrievedBusinessContext] = (),
         grounding_enabled: bool = False,
+        approach_override: tuple[CopyApproach, str] | None = None,
+        reviewer_feedback: str | None = None,
     ) -> EditableTextDraft:
         template = TEMPLATES[channel]
         supported_claims, unsupported_claims = _ground_brief_claims(
             brief, retrieved_contexts, grounding_enabled
         )
-        selection = select_copy_approach(brief)
+        selection = approach_override or select_copy_approach(brief)
         prompt = self._build_prompt(
             brief,
             template,
             approach=selection[0] if selection else None,
+            reviewer_feedback=reviewer_feedback,
             retrieved_contexts=retrieved_contexts,
             supported_claims=supported_claims,
             unsupported_claims=unsupported_claims,
@@ -162,8 +174,14 @@ class ChannelAdaptedDraftService:
         unsupported_claims: Sequence[str] = (),
         grounding_enabled: bool = False,
         approach: CopyApproach | None = None,
+        reviewer_feedback: str | None = None,
     ) -> str:
         approach_block = f"{approach_prompt_block(approach)}\n" if approach else ""
+        if reviewer_feedback and reviewer_feedback.strip():
+            approach_block += (
+                "Reviewer feedback to apply as editing guidance only; it never authorizes "
+                f"new facts or claims: {reviewer_feedback}\n"
+            )
         facts = "\n".join(
             f"- [{fact.status}] {fact.statement} (source: {fact.source}; "
             f"scope: {fact.scope})"
@@ -257,7 +275,15 @@ class RagGroundedDraftService:
         self._index = index
         self._draft_service = ChannelAdaptedDraftService(generator)
 
-    def draft(self, brief: GuidedBrief, *, business_id: str, top_k: int) -> list[EditableTextDraft]:
+    def draft(
+        self,
+        brief: GuidedBrief,
+        *,
+        business_id: str,
+        top_k: int,
+        approach_override: tuple[CopyApproach, str] | None = None,
+        reviewer_feedback: str | None = None,
+    ) -> list[EditableTextDraft]:
         query = self.build_query(brief)
         contexts = self._index.query(query, business_id, top_k)
         return self._draft_service.draft(
@@ -265,6 +291,8 @@ class RagGroundedDraftService:
             retrieved_contexts=contexts,
             business_id=business_id,
             grounding_enabled=True,
+            approach_override=approach_override,
+            reviewer_feedback=reviewer_feedback,
         )
 
     @staticmethod

@@ -69,6 +69,28 @@ The system SHALL select a message angle and CTA based on an explicit or user-con
 - THEN it uses an appropriate formula as an optional scaffold
 - AND is not required to force a formula or name it in the final output.
 
+### Requirement: reviewer-selected copy formula
+
+The drafting API and review interface MUST allow a reviewer to select AIDA,
+PAS, 4 Cs, BAB, 4 Ps or an open loop as an optional copy scaffold. A selected
+formula MUST be reflected in the draft response and MUST NOT add facts or
+claims.
+
+#### Scenario: reviewer selects a formula
+
+- GIVEN an editable draft and a selected copy formula
+- WHEN the reviewer requests generation or regeneration
+- THEN the API uses that formula as optional structural guidance
+- AND the response identifies the approach, formula and rationale.
+
+#### Scenario: selected formula needs evidence that the brief lacks
+
+- GIVEN PAS, BAB or 4 Ps is selected
+- AND the brief has no confirmed facts
+- WHEN the API returns the draft
+- THEN the interface warns that confirmed facts are missing
+- AND the draft uses only general framing without invented proof or outcomes.
+
 ### Requirement: Adaptive interview
 
 The system SHALL ask the minimum useful follow-up questions needed to generate an accurate draft.

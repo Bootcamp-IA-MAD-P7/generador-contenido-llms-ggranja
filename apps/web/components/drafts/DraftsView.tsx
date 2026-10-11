@@ -15,12 +15,14 @@ const filterOptions: { id: Filter; label: string }[] = [
 ];
 
 export function DraftsView({
+  welcomeName,
   contextName,
   handle,
   theme,
   drafts,
   onOpenDraft,
 }: {
+  welcomeName: string;
   contextName: string;
   handle: string;
   theme: BrandTheme;
@@ -34,6 +36,7 @@ export function DraftsView({
     <section aria-labelledby="view-title">
       <header className={styles.head}>
         <Kicker>Borradores</Kicker>
+        <p className={styles.welcome}>Te damos la bienvenida, {welcomeName}</p>
         <h1 id="view-title" className={styles.title}>{contextName}</h1>
         <p className={styles.lede}>Revisa los ejemplos por estado editorial y abre cualquiera en Content Studio.</p>
         <SyntheticNotice>Contenido local sintético · sin persistencia</SyntheticNotice>

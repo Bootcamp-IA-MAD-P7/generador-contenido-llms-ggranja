@@ -1,5 +1,6 @@
 import type { RefObject, ReactNode } from "react";
 import type { ViewId } from "../../domain/types.ts";
+import { useAuth } from "../auth/AuthGate";
 import { NavIcon } from "./NavIcon";
 import styles from "./shell.module.css";
 
@@ -37,6 +38,9 @@ export function Sidebar({
   sidebarRef: RefObject<HTMLElement | null>;
   id: string;
 }) {
+  const auth = useAuth();
+  const displayName = auth ? auth.username.charAt(0).toUpperCase() + auth.username.slice(1) : "Gabriela";
+
   function renderItem(entry: NavEntry, meta?: string) {
     return (
       <li key={entry.id}>
@@ -71,8 +75,9 @@ export function Sidebar({
         </div>
       </nav>
       <div className={styles.sidebarFoot}>
-        <strong>Gabriela</strong>
+        <strong>{displayName}</strong>
         Content manager · espacio local
+        {auth && <button type="button" className={styles.logout} onClick={auth.logout}>Cerrar sesión</button>}
       </div>
     </aside>
   );

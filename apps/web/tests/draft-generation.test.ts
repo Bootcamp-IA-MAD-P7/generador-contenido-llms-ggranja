@@ -27,6 +27,7 @@ test("a valid API response returns editable copy pending human review", async ()
     evidenceProvenance: [{ business_id: "coll-amunt-pelu-sonia", source_id: "collamunt-llibre", source_file: "official.pdf", page_number: 3 }],
     supportedClaims: ["Afirmación respaldada"],
     unsupportedClaims: ["Afirmación dudosa"],
+    copyApproach: null,
   });
 });
 
@@ -64,4 +65,11 @@ test("an invalid editorial state is rejected and cannot auto-approve", async () 
 
 test("malformed HTTP responses are rejected", async () => {
   await assert.rejects(parseDraftResponse({ ok: true, status: 200, json: async () => { throw new Error("invalid json"); } }), /respuesta no válida/);
+});
+
+test("parseCopyApproach reads suggested approach and ignores blanks", async () => {
+  const { parseCopyApproach } = await import("../domain/draft-generation.ts");
+  assert.deepEqual(parseCopyApproach({ copy_approach: "Educativo", copy_formula: "4 Cs", approach_rationale: "Explica." }), { approach: "Educativo", formula: "4 Cs", rationale: "Explica." });
+  assert.equal(parseCopyApproach({ copy_approach: "  " }), null);
+  assert.equal(parseCopyApproach({}), null);
 });

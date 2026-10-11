@@ -13,8 +13,8 @@
 ## Verification
 
 - [x] 8. Add focused API tests for creation, retrieval, lifecycle transitions, isolation and metadata preservation.
-- [ ] 9. Test regeneration feedback matching, formula selection, missing-evidence warnings and session protection.
-- [ ] 10. Run focused tests, SDD/OpenSpec validation and `git diff --check`.
+- [x] 9. Test regeneration feedback matching, formula selection, missing-evidence warnings and session protection.
+- [x] 10. Run focused tests, SDD/OpenSpec validation and `git diff --check`.
 
 All tasks are complete for the approved 20.5.1 scope. Durable persistence and
 identity verification remain outside this iteration.

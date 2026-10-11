@@ -1,4 +1,4 @@
-import type { BrandTheme, BriefForm, DraftEvidence, DraftPreparationStatus } from "../../domain/types.ts";
+import type { BrandTheme, BriefForm, CopyApproachInfo, DraftEvidence, DraftPreparationStatus } from "../../domain/types.ts";
 import { generationStateLabels, type GenerationState } from "../../domain/draft-generation.ts";
 import { statusCopy } from "../../domain/editorial.ts";
 import { Kicker, SyntheticNotice } from "../ui/Kicker";
@@ -22,6 +22,7 @@ export function ContentStudio({
   evidenceProvenance,
   supportedClaims,
   unsupportedClaims,
+  copyApproach,
   reviewerName,
   reviewMessage,
   reviewFeedback,
@@ -52,6 +53,7 @@ export function ContentStudio({
   evidenceProvenance: DraftEvidence[];
   supportedClaims: string[];
   unsupportedClaims: string[];
+  copyApproach: CopyApproachInfo | null;
   reviewerName: string;
   reviewMessage: string;
   reviewFeedback: string;
@@ -116,6 +118,17 @@ export function ContentStudio({
               </p>
               <p className={styles.hint}>{statusCopy[status].hint}</p>
             </div>
+            {copyApproach && status !== "not-prepared" && (
+              <div className={styles.approach} aria-labelledby="approach-title">
+                <h3 id="approach-title" className={styles.approachTitle}>Enfoque del texto</h3>
+                <p className={styles.approachName}>
+                  {copyApproach.approach}
+                  {copyApproach.formula && <span className={styles.approachFormula}>{copyApproach.formula}</span>}
+                </p>
+                {copyApproach.rationale && <p className={styles.note}>{copyApproach.rationale}</p>}
+                <p className={styles.note}>Es solo una guía de estructura: editas el texto como quieras y nada se publica sin tu aprobación.</p>
+              </div>
+            )}
             <ReviewActions status={status} onApprove={onApprove} onRequestChanges={onRequestChanges} onResubmit={onResubmit} />
             {status === "pending-review" || status === "changes-requested" ? (
               <div className={styles.reviewerField}>

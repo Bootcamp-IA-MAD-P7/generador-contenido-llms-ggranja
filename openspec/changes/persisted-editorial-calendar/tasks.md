@@ -9,5 +9,5 @@
 - [x] Add the authenticated API operation that updates one item's day and saves the plan.
 - [x] Persist calendar moves through the API, constrain day choices to the plan range, and show save errors.
 - [x] Fix the plans API import extension so frontend tests load under Node.
-- [ ] Test day persistence, date-range rejection and unchanged storage after a rejected move.
-- [ ] Run validation and open a PR for merge authorization.
+- [x] Test day persistence, date-range rejection and unchanged storage after a rejected move.
+- [x] Run validation and open a PR for merge authorization.

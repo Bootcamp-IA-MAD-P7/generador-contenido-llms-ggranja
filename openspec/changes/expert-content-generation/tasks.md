@@ -26,7 +26,7 @@
 
 - [x] Add the explicit six-formula selector to the review card and pass the selected value to generation/regeneration.
 - [x] Return the selected approach, formula and evidence warning in API drafts.
-- [ ] Verify that formulas requiring confirmed facts warn when the brief has none and never invent proof.
-- [ ] Run frontend/API tests and validate the OpenSpec change before marking implementation complete.
+- [x] Verify that formulas requiring confirmed facts warn when the brief has none and never invent proof.
+- [x] Run frontend/API tests and validate the OpenSpec change before marking implementation complete.
 
-The Issue #22 contract is approved; implementation may proceed. Keep verification tasks open until their evidence is produced, and do not archive the change before implementation, evaluation and CI are complete.
+The Issue #22 contract is approved and its implementation evidence is recorded. Keep the change unarchived until the verification PR is merged and the approved OpenSpec change can be archived.

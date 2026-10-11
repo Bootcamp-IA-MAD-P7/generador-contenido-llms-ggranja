@@ -1,4 +1,3 @@
-import { authHeaders, handleUnauthorized } from "./auth.ts";
 import type { BriefForm, DraftEvidence } from "./types.ts";
 
 export type ApiEditorialState = "generated_draft" | "pending_human_review" | "approved_final";
@@ -13,6 +12,9 @@ export type ApiDraft = {
   evidence_provenance: DraftEvidence[];
   supported_claims: string[];
   unsupported_claims: string[];
+  copy_approach?: string | null;
+  copy_formula?: string | null;
+  approach_rationale?: string | null;
 };
 export type ApiEditorialContent = {
   content_id: string;
@@ -55,16 +57,12 @@ export function mapBriefToApi(brief: BriefForm, businessContextRef: string) {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${apiBaseUrl()}${path}`, { ...init, headers: { ...(init.headers as Record<string, string> | undefined), ...authHeaders() }, signal: init.signal ?? AbortSignal.timeout(10000) });
+    response = await fetch(`${apiBaseUrl()}${path}`, { ...init, signal: init.signal ?? AbortSignal.timeout(10000) });
   } catch (error) {
     throw new ReviewApiError(error instanceof Error && error.name === "TimeoutError" ? "La API agotó el tiempo de espera." : "No se pudo conectar con la API.");
   }
   let payload: unknown = null;
   try { payload = await response.json(); } catch { /* HTTP errors may have no JSON body. */ }
-  if (response.status === 401) {
-    handleUnauthorized();
-    throw new ReviewApiError("Tu sesión ha caducado. Vuelve a iniciar sesión.", 401);
-  }
   if (!response.ok) {
     const detail = payload && typeof payload === "object" && typeof (payload as { detail?: unknown }).detail === "string"
       ? (payload as { detail: string }).detail : `La API respondió con estado ${response.status}.`;

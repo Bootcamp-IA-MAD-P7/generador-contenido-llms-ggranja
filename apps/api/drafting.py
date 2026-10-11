@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
+from apps.api.copy_formulas import CopyApproach, approach_prompt_block, select_copy_approach
 from apps.api.llm import TextGenerator
 from apps.api.models import GuidedBrief, Platform
 from apps.api.rag import LocalChromaIndex, RetrievedBusinessContext, ground_claim
@@ -61,6 +62,9 @@ class EditableTextDraft(BaseModel):
     evidence_provenance: list[dict[str, object]] = Field(default_factory=list)
     supported_claims: list[str] = Field(default_factory=list)
     unsupported_claims: list[str] = Field(default_factory=list)
+    copy_approach: str | None = None
+    copy_formula: str | None = None
+    approach_rationale: str | None = None
 
 
 class ChannelAdaptedDraftService:
@@ -100,9 +104,11 @@ class ChannelAdaptedDraftService:
         supported_claims, unsupported_claims = _ground_brief_claims(
             brief, retrieved_contexts, grounding_enabled
         )
+        selection = select_copy_approach(brief)
         prompt = self._build_prompt(
             brief,
             template,
+            approach=selection[0] if selection else None,
             retrieved_contexts=retrieved_contexts,
             supported_claims=supported_claims,
             unsupported_claims=unsupported_claims,
@@ -141,6 +147,9 @@ class ChannelAdaptedDraftService:
             evidence_provenance=[_provenance_dict(context) for context in retrieved_contexts],
             supported_claims=supported_claims,
             unsupported_claims=unsupported_claims,
+            copy_approach=selection[0].label if selection else None,
+            copy_formula=selection[0].formula if selection else None,
+            approach_rationale=selection[1] if selection else None,
         )
 
     @staticmethod
@@ -152,7 +161,9 @@ class ChannelAdaptedDraftService:
         supported_claims: Sequence[str] = (),
         unsupported_claims: Sequence[str] = (),
         grounding_enabled: bool = False,
+        approach: CopyApproach | None = None,
     ) -> str:
+        approach_block = f"{approach_prompt_block(approach)}\n" if approach else ""
         facts = "\n".join(
             f"- [{fact.status}] {fact.statement} (source: {fact.source}; "
             f"scope: {fact.scope})"
@@ -192,6 +203,7 @@ class ChannelAdaptedDraftService:
             f"Audience context: {brief.audience_context or 'UNKNOWN'}\n"
             f"Brand and constraints: {brief.brand_and_constraints or 'UNKNOWN'}\n"
             f"Channel instructions: {template.instructions}\n"
+            f"{approach_block}"
             f"{evidence_block}\n"
             "Return only editable draft text. Never invent business facts, "
             "benefits, proof, deadlines, scarcity, credentials or guarantees. "

@@ -2,10 +2,11 @@
 
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from apps.api.auth import AuthSettings, authenticate, issue_token, require_session
 from apps.api.drafting import ChannelAdaptedDraftService, EditableTextDraft
 from apps.api.editorial_review import (
     EditorialContent,
@@ -82,7 +83,7 @@ app.add_middleware(
     ],
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 persistence_settings = EditorialPersistenceSettings.from_environment()
@@ -97,7 +98,37 @@ def readiness() -> ReadinessResponse:
     return ReadinessResponse()
 
 
-@app.post("/drafts", response_model=DraftResponse)
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    username: str
+    expires_at: int
+
+
+@app.post("/auth/login", response_model=LoginResponse)
+def login(request: LoginRequest) -> LoginResponse:
+    """Exchange the local credentials for a signed, expiring session token."""
+
+    settings = AuthSettings.from_environment()
+    if settings is None:
+        raise HTTPException(status_code=503, detail="authentication is not configured")
+    if not authenticate(settings, request.username, request.password):
+        raise HTTPException(status_code=401, detail="invalid credentials")
+    token, expires_at = issue_token(settings)
+    return LoginResponse(access_token=token, username=settings.username, expires_at=expires_at)
+
+
+@app.get("/auth/me")
+def current_user(username: str = Depends(require_session)) -> dict[str, str]:
+    return {"username": username}
+
+
+@app.post("/drafts", response_model=DraftResponse, dependencies=[Depends(require_session)])
 def create_drafts(request: DraftRequest) -> DraftResponse:
     """Generate editable drafts through the configured provider.
 
@@ -170,12 +201,12 @@ def _get_editorial_content(content_id: str) -> EditorialContent:
     return content
 
 
-@app.get("/drafts/{content_id}", response_model=EditorialContent)
+@app.get("/drafts/{content_id}", response_model=EditorialContent, dependencies=[Depends(require_session)])
 def get_draft(content_id: str) -> EditorialContent:
     return _get_editorial_content(content_id)
 
 
-@app.get("/drafts/{content_id}/review", response_model=ReviewStatusResponse)
+@app.get("/drafts/{content_id}/review", response_model=ReviewStatusResponse, dependencies=[Depends(require_session)])
 def get_review_status(content_id: str) -> ReviewStatusResponse:
     content = _get_editorial_content(content_id)
     return ReviewStatusResponse(
@@ -185,7 +216,7 @@ def get_review_status(content_id: str) -> ReviewStatusResponse:
     )
 
 
-@app.post("/drafts/{content_id}/review", response_model=EditorialContent)
+@app.post("/drafts/{content_id}/review", response_model=EditorialContent, dependencies=[Depends(require_session)])
 def record_review(content_id: str, request: ReviewRequest) -> EditorialContent:
     content = _get_editorial_content(content_id)
     if not request.reviewer_ref.strip():
@@ -211,7 +242,7 @@ def record_review(content_id: str, request: ReviewRequest) -> EditorialContent:
     return editorial_store.save(updated)
 
 
-@app.patch("/drafts/{content_id}", response_model=EditorialContent)
+@app.patch("/drafts/{content_id}", response_model=EditorialContent, dependencies=[Depends(require_session)])
 def edit_draft(content_id: str, request: ManualEditRequest) -> EditorialContent:
     content = _get_editorial_content(content_id)
     try:
@@ -230,7 +261,7 @@ class StoredEditorialPlan(BaseModel):
     plan: EditorialPlan
 
 
-@app.post("/plans", response_model=StoredEditorialPlan)
+@app.post("/plans", response_model=StoredEditorialPlan, dependencies=[Depends(require_session)])
 def save_plan(plan: EditorialPlan) -> StoredEditorialPlan:
     """Persist an already validated plan for later calendar rendering."""
 
@@ -239,7 +270,7 @@ def save_plan(plan: EditorialPlan) -> StoredEditorialPlan:
     return StoredEditorialPlan(plan_id=plan_id, plan=plan)
 
 
-@app.get("/plans/{plan_id}", response_model=StoredEditorialPlan)
+@app.get("/plans/{plan_id}", response_model=StoredEditorialPlan, dependencies=[Depends(require_session)])
 def get_plan(plan_id: str) -> StoredEditorialPlan:
     plan = editorial_plan_store.get(plan_id)
     if plan is None:
@@ -247,7 +278,7 @@ def get_plan(plan_id: str) -> StoredEditorialPlan:
     return StoredEditorialPlan(plan_id=plan_id, plan=plan)
 
 
-@app.get("/plans", response_model=list[StoredEditorialPlan])
+@app.get("/plans", response_model=list[StoredEditorialPlan], dependencies=[Depends(require_session)])
 def list_plans() -> list[StoredEditorialPlan]:
     return [
         StoredEditorialPlan(plan_id=plan_id, plan=plan)

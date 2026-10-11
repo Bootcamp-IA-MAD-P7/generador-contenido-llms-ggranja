@@ -92,6 +92,10 @@ class EnvironmentConfigTests(unittest.TestCase):
                 "RAG_CHROMA_COLLECTION",
                 "RAG_CHROMA_PERSIST_DIRECTORY",
                 "RAG_API_BASE_URL",
+                "AUTH_USERNAME",
+                "AUTH_PASSWORD_HASH",
+                "AUTH_SECRET",
+                "AUTH_TOKEN_TTL_MINUTES",
             },
         )
         self.assertRegex(assignment_text, r"(?m)^GROQ_API_KEY=$")

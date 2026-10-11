@@ -1,3 +1,4 @@
+import { authHeaders, handleUnauthorized } from "./auth.ts";
 import { apiBaseUrl, ReviewApiError } from "./review-api";
 
 export type EditorialPlanItem = {
@@ -28,19 +29,21 @@ export async function savePlan(plan: EditorialPlan): Promise<StoredPlan> {
   try {
     response = await fetch(`${apiBaseUrl()}/plans`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify(plan),
       signal: AbortSignal.timeout(10000),
     });
   } catch {
     throw new ReviewApiError("No se pudo conectar con la API de planes.");
   }
+  if (response.status === 401) { handleUnauthorized(); throw new ReviewApiError("Tu sesión ha caducado. Vuelve a iniciar sesión.", 401); }
   if (!response.ok) throw new ReviewApiError("El plan no se pudo guardar.", response.status);
   return response.json() as Promise<StoredPlan>;
 }
 
 export async function getPlans(): Promise<StoredPlan[]> {
-  const response = await fetch(`${apiBaseUrl()}/plans`);
+  const response = await fetch(`${apiBaseUrl()}/plans`, { headers: authHeaders() });
+  if (response.status === 401) { handleUnauthorized(); throw new ReviewApiError("Tu sesión ha caducado. Vuelve a iniciar sesión.", 401); }
   if (!response.ok) throw new ReviewApiError("El calendario no está disponible.", response.status);
   return response.json() as Promise<StoredPlan[]>;
 }

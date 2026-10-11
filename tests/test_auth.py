@@ -62,8 +62,17 @@ def test_username_is_case_insensitive_but_wrong_credentials_are_rejected_alike()
 
 def test_protected_routes_need_a_valid_session_but_readiness_stays_open() -> None:
     assert client.get("/readiness").status_code == 200
-    for method, path in [("get", "/plans"), ("get", "/drafts/x"), ("post", "/drafts"), ("get", "/auth/me")]:
+    for method, path in [
+        ("get", "/plans"),
+        ("get", "/drafts/x"),
+        ("post", "/drafts"),
+        ("post", "/drafts/x/regenerate"),
+        ("get", "/auth/me"),
+    ]:
         assert getattr(client, method)(path).status_code == 401, path
+    assert client.patch(
+        "/plans/plan-x/items/0/day", json={"day": "2026-10-15"}
+    ).status_code == 401
     assert client.get("/plans", headers={"Authorization": "Bearer garbage"}).status_code == 401
 
 

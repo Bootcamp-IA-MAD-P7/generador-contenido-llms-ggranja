@@ -2,6 +2,55 @@
 
 ## ADDED Requirements
 
+### Requirement: authenticated session and protected API
+
+The API MUST expose `POST /auth/login` to exchange configured credentials for
+an expiring bearer token and `GET /auth/me` to return the authenticated
+username. Draft, review, regeneration, edit and plan operations MUST require a
+valid session.
+
+#### Scenario: signed-in reviewer identity is available
+
+- GIVEN a valid session token
+- WHEN the client requests `GET /auth/me`
+- THEN the response includes the username associated with the session.
+
+#### Scenario: protected operation has no valid session
+
+- GIVEN no valid bearer token
+- WHEN the caller requests a draft, review, regeneration, edit or plan operation
+- THEN the API returns 401 and does not mutate editorial state.
+
+### Requirement: feedback-driven regeneration endpoint
+
+`POST /drafts/{content_id}/regenerate` MUST require a valid session, a current
+brief and feedback that exactly matches the feedback recorded for that source
+draft. It MAY accept one explicitly selected formula. The API MUST create a
+new content ID, preserve source lineage and business/RAG provenance, and return
+the new draft to `pending_human_review` without approving it.
+
+#### Scenario: recorded feedback regenerates a draft
+
+- GIVEN a pending draft with a recorded `request_regeneration` review
+- AND the request feedback exactly matches the stored feedback
+- WHEN the client posts a brief and optional formula to the regeneration endpoint
+- THEN the API creates a new pending-review draft linked to the source draft
+- AND retains the feedback, evidence provenance and selected formula rationale.
+
+#### Scenario: feedback is missing or differs from the recorded value
+
+- GIVEN the source draft has no matching recorded feedback decision
+- WHEN regeneration is requested
+- THEN the API returns 409 and does not create a new draft.
+
+#### Scenario: evidence-dependent formula has no confirmed facts
+
+- GIVEN the selected formula relies on proof or a real before/after situation
+- AND the brief has no confirmed facts
+- WHEN the draft is regenerated
+- THEN the response warns that the brief lacks confirmed facts
+- AND the prompt prohibits invented evidence, outcomes and proof.
+
 ### Requirement: reviewable draft identity and retrieval
 
 The API MUST assign each generated channel draft a stable `content_id` and

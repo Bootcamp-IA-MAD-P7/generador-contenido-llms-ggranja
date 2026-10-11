@@ -13,7 +13,7 @@ import type {
   ViewId,
 } from "../domain/types.ts";
 import { canStartGeneration, parseCopyApproach, parseDraftResponse, type GenerationState } from "../domain/draft-generation.ts";
-import { createDraft, getDraft, reviewDraft, updateDraft, mapBriefToApi, type ApiEditorialContent } from "../domain/review-api.ts";
+import { createDraft, getDraft, regenerateDraft, reviewDraft, updateDraft, mapBriefToApi, type ApiEditorialContent, type FormulaCode } from "../domain/review-api.ts";
 import { savePlan, type EditorialPlan } from "../domain/plans-api.ts";
 import { brandContexts, dashboardFixtures, draftFixtures, getBriefDefaults, historyFixtures } from "../domain/fixtures.ts";
 import {
@@ -34,6 +34,7 @@ import { HistoryView } from "./history/HistoryView";
 import { ContentStudio } from "./studio/ContentStudio";
 import { CalendarView } from "./calendar/CalendarView";
 import { PlaceholderView } from "./ui/PlaceholderView";
+import { useAuth } from "./auth/AuthGate";
 
 type DraftApiResponse = { detail?: string; drafts?: Array<{ caption?: string; evidence_provenance?: unknown; supported_claims?: unknown; unsupported_claims?: unknown }>; review_state?: "pending_human_review" };
 
@@ -57,6 +58,9 @@ const placeholders: Partial<Record<ViewId, string>> = {
 };
 
 export function Workspace() {
+  const auth = useAuth();
+  const sessionReviewer = auth?.username ?? "";
+  const welcomeName = sessionReviewer ? sessionReviewer.charAt(0).toLocaleUpperCase() + sessionReviewer.slice(1) : "";
   const [view, setView] = useState<ViewId>("dashboard");
   const [brandId, setBrandId] = useState<BrandId>("panaderia");
   const [commerceId, setCommerceId] = useState<CommerceId | null>(null);
@@ -102,7 +106,8 @@ export function Workspace() {
   const [supportedClaims, setSupportedClaims] = useState<string[]>([]);
   const [unsupportedClaims, setUnsupportedClaims] = useState<string[]>([]);
   const [copyApproach, setCopyApproach] = useState<CopyApproachInfo | null>(null);
-  const [reviewerName, setReviewerName] = useState("");
+  const [reviewerName, setReviewerName] = useState(sessionReviewer);
+  const [formulaCode, setFormulaCode] = useState<FormulaCode | "AUTO">("AUTO");
   const [reviewMessage, setReviewMessage] = useState("");
   const [reviewFeedback, setReviewFeedback] = useState("");
   const [planSaveMessage, setPlanSaveMessage] = useState("");
@@ -119,14 +124,15 @@ export function Workspace() {
     setSupportedClaims([]);
     setUnsupportedClaims([]);
     setCopyApproach(null);
-    setReviewerName("");
+    setReviewerName(sessionReviewer);
+    setFormulaCode("AUTO");
     setReviewMessage("");
     setReviewFeedback("");
     setPlanSaveMessage("");
     setActiveBackendId(null);
     setActiveSessionDraftId(null);
     requestSequence.current += 1;
-  }, [activeContext.account, contextName]);
+  }, [activeContext.account, contextName, sessionReviewer]);
 
   function updateBrief(field: keyof BriefForm, value: string) {
     const nextBrief = { ...brief, [field]: value };
@@ -201,9 +207,10 @@ export function Workspace() {
     if (activeBackendId) {
       if (missingReviewer(reviewerName)) { setReviewMessage("Indica quién revisa el borrador antes de solicitar cambios."); return; }
       if (!reviewFeedback.trim()) { setReviewMessage("Indica el feedback para solicitar cambios."); return; }
+      if (!window.confirm("¿Registrar este feedback y dejar el borrador listo para regenerar?")) return;
       const requestVersion = ++requestSequence.current;
       try {
-        const content = await reviewDraft(activeBackendId, "request_regeneration", reviewerName.trim(), reviewFeedback.trim());
+        const content = await reviewDraft(activeBackendId, "request_regeneration", reviewerName.trim(), reviewFeedback);
         if (requestVersion !== requestSequence.current) return;
         applyBackendContent(content);
         setReviewMessage("");
@@ -222,8 +229,41 @@ export function Workspace() {
     if (activeSessionDraftId) recordSessionHistory(activeSessionDraftId, "changes-requested", "Se solicitaron cambios para este borrador.");
   }
 
-  function resubmitCurrentDraft() {
-    if (activeBackendId) { setReviewMessage("La API registra la solicitud de cambios; no genera contenido automáticamente."); return; }
+  async function resubmitCurrentDraft() {
+    if (activeBackendId) {
+      if (missingReviewer(reviewerName)) { setReviewMessage("No se encontró el usuario de sesión para registrar la revisión."); return; }
+      if (!reviewFeedback.trim()) { setReviewMessage("Añade el feedback antes de regenerar."); return; }
+      const requestVersion = ++requestSequence.current;
+      setGenerationState("loading");
+      setReviewMessage("");
+      const apiBrief = mapBriefToApi({ ...brief, restrictions: brief.restrictions.trim() || activeContext.summary }, activeContext.account);
+      const ragBusinessId = brand.id === "coll-amunt" ? activeCommerce?.businessId : undefined;
+      try {
+        const recorded = await reviewDraft(activeBackendId, "request_regeneration", reviewerName.trim(), reviewFeedback);
+        if (requestVersion !== requestSequence.current) return;
+        applyBackendContent(recorded);
+        const regenerated = await regenerateDraft(activeBackendId, {
+          brief: apiBrief,
+          feedback: reviewFeedback,
+          ...(formulaCode !== "AUTO" ? { formula: formulaCode } : {}),
+          businessId: ragBusinessId,
+          ragEnabled: Boolean(ragBusinessId),
+        });
+        if (requestVersion !== requestSequence.current) return;
+        applyBackendContent(regenerated);
+        setStatus("pending-review");
+        setGenerationState("success");
+        setReviewFeedback("");
+        setReviewMessage("");
+        if (activeSessionDraftId) recordSessionHistory(activeSessionDraftId, "review", "Se generó una nueva versión con el feedback indicado; queda pendiente de revisión humana.");
+      } catch (error) {
+        if (requestVersion === requestSequence.current) {
+          setGenerationState("error");
+          setReviewMessage(error instanceof Error ? error.message : "No se pudo regenerar el borrador.");
+        }
+      }
+      return;
+    }
     if (missingReviewer(reviewerName)) {
       setReviewMessage("Indica quién revisa el borrador antes de devolverlo a revisión.");
       return;
@@ -243,9 +283,9 @@ export function Workspace() {
     setSupportedClaims(content.draft.supported_claims ?? []);
     setUnsupportedClaims(content.draft.unsupported_claims ?? []);
     setCopyApproach(parseCopyApproach(content.draft));
-    setStatus(content.state === "approved_final" ? "approved" : "pending-review");
+    setStatus(content.state === "approved_final" ? "approved" : content.review?.decision === "request_regeneration" ? "changes-requested" : "pending-review");
     setReviewFeedback(content.review?.feedback ?? "");
-    updateSessionDraft({ copy: content.draft.caption, status: content.state === "approved_final" ? "approved" : "review", reviewer: content.review?.reviewer_ref });
+    updateSessionDraft({ backendId: content.content_id, copy: content.draft.caption, status: content.state === "approved_final" ? "approved" : content.review?.decision === "request_regeneration" ? "draft" : "review", reviewer: content.review?.reviewer_ref });
   }
 
   function buildValidatedPlan(): EditorialPlan | null {
@@ -267,6 +307,7 @@ export function Workspace() {
         bucket_key: "VALUE",
         platform,
         format,
+        scheduled_on: today,
         review_state: status === "approved" ? "approved_final" : "pending_human_review",
         evidence: {},
       }],
@@ -301,7 +342,7 @@ export function Workspace() {
     }
     setGenerationState("loading");
     setValidationMessage("");
-    setReviewerName("");
+    setReviewerName(sessionReviewer);
     setReviewMessage("");
     setPreviewEvidence([]);
     setSupportedClaims([]);
@@ -314,7 +355,7 @@ export function Workspace() {
 
     try {
       {
-      const payload = await createDraft({ brief: mapBriefToApi({ ...brief, restrictions: brief.restrictions.trim() || activeContext.summary }, activeContext.account), brandId: brand.id, businessId: ragBusinessId, ragEnabled: Boolean(ragBusinessId) });
+      const payload = await createDraft({ brief: mapBriefToApi({ ...brief, restrictions: brief.restrictions.trim() || activeContext.summary }, activeContext.account), brandId: brand.id, businessId: ragBusinessId, ragEnabled: Boolean(ragBusinessId), ...(formulaCode !== "AUTO" ? { formula: formulaCode } : {}) });
       if (requestVersion !== requestSequence.current) return;
       const parsed = await parseDraftResponse({ ok: true, status: 200, json: async () => payload }, ragBusinessId);
       const parsedDrafts = await Promise.all(payload.drafts!.map((_, index) => parseDraftResponse({ ok: true, status: 200, json: async () => ({ ...payload, drafts: [payload.drafts?.[index]], content_ids: [payload.content_ids?.[index]] }) }, ragBusinessId)));
@@ -400,13 +441,14 @@ export function Workspace() {
   }
 
   async function openDraft(draft: LocalDraft) {
+    setFormulaCode("AUTO");
     setBrief(draft.brief);
     setPreviewCopy(draft.copy);
     setPreviewEvidence(draft.evidenceProvenance ?? []);
     setSupportedClaims(draft.supportedClaims ?? []);
     setUnsupportedClaims(draft.unsupportedClaims ?? []);
     setCopyApproach(draft.copyApproach ?? null);
-    setReviewerName(draft.reviewer ?? "");
+    setReviewerName(draft.reviewer ?? sessionReviewer);
     setReviewFeedback("");
     setReviewMessage("");
     setStatus(statusFromDraft(draft.status));
@@ -459,6 +501,7 @@ export function Workspace() {
     >
       {view === "dashboard" && (
         <Dashboard
+          welcomeName={welcomeName}
           contextName={contextName}
           kind={activeCommerce ? activeCommerce.sector : brand.kind}
           summary={activeContext.summary}
@@ -470,6 +513,7 @@ export function Workspace() {
       )}
       {view === "drafts" && (
         <DraftsView
+          welcomeName={welcomeName}
           contextName={contextName}
           handle={activeContext.account}
           theme={theme}
@@ -479,6 +523,7 @@ export function Workspace() {
       )}
       {view === "history" && (
         <HistoryView
+          welcomeName={welcomeName}
           contextName={contextName}
           entries={historyEntries}
           drafts={drafts}
@@ -487,6 +532,7 @@ export function Workspace() {
       )}
       {view === "content-studio" && (
         <ContentStudio
+          welcomeName={welcomeName}
           contextName={contextName}
           contextSummary={activeContext.summary}
           contextSector={activeCommerce?.sector}
@@ -501,10 +547,14 @@ export function Workspace() {
           supportedClaims={supportedClaims}
           unsupportedClaims={unsupportedClaims}
           copyApproach={copyApproach}
+          formulaCode={formulaCode}
+          hasConfirmedFacts={false}
+          isRegenerating={generationState === "loading"}
           reviewerName={reviewerName}
           reviewMessage={reviewMessage}
            reviewFeedback={reviewFeedback}
            onReviewFeedbackChange={(value) => { setReviewFeedback(value); setReviewMessage(""); }}
+          onFormulaChange={setFormulaCode}
           onReviewerChange={(value) => { setReviewerName(value); setReviewMessage(""); }}
           onBriefChange={updateBrief}
           onCopyChange={updateCopy}
@@ -519,7 +569,7 @@ export function Workspace() {
           onSavePlan={saveValidatedPlan}
         />
       )}
-      {view === "calendar" && <CalendarView />}
+      {view === "calendar" && <CalendarView welcomeName={welcomeName} />}
       {placeholders[view] && <PlaceholderView title={viewTitles[view]} description={placeholders[view]!} />}
     </AppShell>
   );

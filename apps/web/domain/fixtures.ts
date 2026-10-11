@@ -27,7 +27,7 @@ export const brandContexts: BrandContext[] = [
     account: "collamunt",
     kind: "Asociación de comercio local · Barcelona",
     summary: "Asociación de comercios locales de Barcelona. El contexto factual se recupera del PDF oficial de Coll Amunt!.",
-    theme: { accent: "#a3283d", ink: "#3a1119", tint: "#f4d9dc" },
+    theme: { accent: "#176b9a", ink: "#12354b", tint: "#dceef7" },
     commerceOptions: [
       {
         id: "pelu-sonia",

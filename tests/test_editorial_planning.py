@@ -18,6 +18,7 @@ from apps.api.editorial_planning import (
     allocate_slots,
     assign_item,
     create_plan,
+    reschedule_item,
 )
 from apps.api.editorial_review import (
     EditorialContent,
@@ -484,6 +485,55 @@ class SourcePreservationTests(unittest.TestCase):
                     format=format,
                 )
         self.assertEqual(source.state, "pending_human_review")
+
+
+class PlannedItemDayTests(unittest.TestCase):
+    def test_scheduled_day_is_preserved_and_must_be_within_plan_range(self) -> None:
+        item = PlannedItem(
+            source_ref="brief:synthetic-1",
+            source_kind="guided_brief",
+            strategy_version="1.0.0",
+            bucket_key="VALUE",
+            platform="instagram",
+            format="single_image",
+            scheduled_on=date(2026, 10, 3),
+        )
+        plan = EditorialPlan(
+            strategy_id="eighty_twenty",
+            strategy_version="1.0.0",
+            total_slots=1,
+            starts_on=START,
+            ends_on=END,
+            targets={"VALUE": 1},
+            items=(item,),
+        )
+        moved = reschedule_item(plan, 0, date(2026, 10, 10))
+        self.assertEqual(moved.items[0].scheduled_on, date(2026, 10, 10))
+        self.assertEqual(plan.items[0].scheduled_on, date(2026, 10, 3))
+        with self.assertRaisesRegex(ValueError, "within the plan date range"):
+            reschedule_item(plan, 0, date(2026, 11, 1))
+        with self.assertRaises(IndexError):
+            reschedule_item(plan, 1, date(2026, 10, 10))
+
+    def test_plan_rejects_scheduled_day_outside_cycle(self) -> None:
+        with self.assertRaises(ValidationError):
+            EditorialPlan(
+                strategy_id="eighty_twenty",
+                strategy_version="1.0.0",
+                total_slots=1,
+                starts_on=START,
+                ends_on=END,
+                targets={"VALUE": 1},
+                items=(PlannedItem(
+                    source_ref="brief:synthetic-1",
+                    source_kind="guided_brief",
+                    strategy_version="1.0.0",
+                    bucket_key="VALUE",
+                    platform="instagram",
+                    format="single_image",
+                    scheduled_on=date(2026, 11, 1),
+                ),),
+            )
 
 
 if __name__ == "__main__":

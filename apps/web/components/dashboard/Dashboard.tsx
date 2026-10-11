@@ -4,6 +4,7 @@ import { PostArt } from "../ui/PostArt";
 import styles from "./dashboard.module.css";
 
 export function Dashboard({
+  welcomeName,
   contextName,
   kind,
   summary,
@@ -12,6 +13,7 @@ export function Dashboard({
   fixture,
   onCreate,
 }: {
+  welcomeName: string;
   contextName: string;
   kind: string;
   summary: string;
@@ -32,6 +34,7 @@ export function Dashboard({
         <div>
           <span className={styles.brandRule} aria-hidden="true" />
           <Kicker>{kind}</Kicker>
+          <p className={styles.welcome}>Te damos la bienvenida, {welcomeName}</p>
           <h1 id="view-title" className={styles.title}>{contextName}</h1>
           <p className={styles.lede}>{summary}</p>
         </div>

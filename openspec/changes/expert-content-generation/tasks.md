@@ -22,4 +22,11 @@
 - [x] Record evaluation evidence and limitations against Issue #22.
 - [x] Update the daily log and traceability; archive only after implementation, evidence and CI are complete.
 
+## Formula-selection implementation follow-up
+
+- [x] Add the explicit six-formula selector to the review card and pass the selected value to generation/regeneration.
+- [x] Return the selected approach, formula and evidence warning in API drafts.
+- [ ] Verify that formulas requiring confirmed facts warn when the brief has none and never invent proof.
+- [ ] Run frontend/API tests and validate the OpenSpec change before marking implementation complete.
+
 The Issue #22 contract is approved; implementation may proceed. Keep verification tasks open until their evidence is produced, and do not archive the change before implementation, evaluation and CI are complete.

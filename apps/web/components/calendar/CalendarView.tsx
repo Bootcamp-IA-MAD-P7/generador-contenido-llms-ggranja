@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getPlans, type StoredPlan } from "../../domain/plans-api";
+import { getPlans, updatePlanItemDay, type StoredPlan } from "../../domain/plans-api.ts";
 import {
   applyMoves,
   bucketLabels,
@@ -31,8 +31,8 @@ const bucketClass: Record<string, string> = {
 };
 
 function planItems(plans: StoredPlan[]): CalendarItem[] {
-  return plans.flatMap(({ plan_id, plan }) =>
-    distribute(
+  return plans.flatMap(({ plan_id, plan }) => {
+    const base = distribute(
       plan.items.map((item, index) => ({
         id: `${plan_id}-${index}`,
         title: `${bucketLabels[item.bucket_key] ?? item.bucket_key} · ${platformLabels[item.platform] ?? item.platform}`,
@@ -41,11 +41,19 @@ function planItems(plans: StoredPlan[]): CalendarItem[] {
         format: item.format,
       })),
       plan.starts_on,
-    ),
-  );
+    );
+    return plan.items.map((item, index) => ({
+      ...base[index],
+      date: item.scheduled_on ?? (base[index].date <= plan.ends_on ? base[index].date : plan.ends_on),
+      planId: plan_id,
+      itemIndex: index,
+      startsOn: plan.starts_on,
+      endsOn: plan.ends_on,
+    }));
+  });
 }
 
-export function CalendarView() {
+export function CalendarView({ welcomeName }: { welcomeName: string }) {
   const [plans, setPlans] = useState<StoredPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -57,6 +65,7 @@ export function CalendarView() {
   const [moves, setMoves] = useState<Record<string, string>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   useEffect(() => {
     getPlans()
@@ -91,8 +100,29 @@ export function CalendarView() {
     return mergeTargets([...planTargets, ...(sampleCount ? [thirdsTargets(sampleCount)] : [])]);
   }, [plans, showSample, monthItems, monthPrefix]);
 
-  function moveTo(date: string, id: string | null) {
+  async function moveTo(date: string, id: string | null) {
     if (!id) return;
+    const item = items.find((candidate) => candidate.id === id);
+    if (!item) return;
+    if (item.startsOn && item.endsOn && (date < item.startsOn || date > item.endsOn)) {
+      setError("El día elegido debe estar dentro del rango del plan.");
+      return;
+    }
+    if (item.planId && item.itemIndex !== undefined) {
+      setSavingId(id);
+      setError("");
+      try {
+        const updated = await updatePlanItemDay(item.planId, item.itemIndex, date);
+        setPlans((current) => current.map((stored) => stored.plan_id === updated.plan_id ? updated : stored));
+        setSelectedId(null);
+      } catch (cause) {
+        setError(cause instanceof Error ? `No se pudo guardar el cambio de día: ${cause.message}` : "No se pudo guardar el cambio de día.");
+      } finally {
+        setSavingId(null);
+        setDragId(null);
+      }
+      return;
+    }
     setMoves((current) => ({ ...current, [id]: date }));
     setSelectedId(null);
     setDragId(null);
@@ -115,7 +145,7 @@ export function CalendarView() {
       <header className={styles.head}>
         <div>
           <Kicker>Calendario editorial</Kicker>
-          <p className={styles.greeting}>Hola, Gabriela</p>
+          <p className={styles.greeting}>Hola, {welcomeName}</p>
           <h1 id="calendar-title" className={styles.title}>¿Qué planificamos este mes?</h1>
           <p className={styles.lede}>Las publicaciones se reparten en lunes, miércoles y viernes. Muévelas al día que prefieras.</p>
         </div>
@@ -124,7 +154,7 @@ export function CalendarView() {
         </button>
       </header>
 
-      {error && <p className={styles.alert} role="alert">No se pudieron cargar los planes: {error}</p>}
+      {error && <p className={styles.alert} role="alert">Calendario: {error}</p>}
       {loading && <p className={styles.state} role="status">Cargando planes…</p>}
 
       <div className={styles.toolbar}>
@@ -173,9 +203,10 @@ export function CalendarView() {
                   <span className={styles.postMeta}>{platformLabels[item.platform] ?? item.platform} · {formatLabels[item.format] ?? item.format}</span>
                 </button>
               ))}
-              {selected && selected.date !== cell.date && cell.inMonth && (
+              {selected && selected.date !== cell.date && cell.inMonth &&
+                (!selected.startsOn || !selected.endsOn || (cell.date >= selected.startsOn && cell.date <= selected.endsOn)) && (
                 <button type="button" className={styles.dropHere} onClick={() => moveTo(cell.date, selectedId)}>
-                  Mover aquí<span className="sr-only"> el {cell.day} de {monthLabel}</span>
+                  {savingId === selected.id ? "Guardando…" : "Mover aquí"}<span className="sr-only"> el {cell.day} de {monthLabel}</span>
                 </button>
               )}
             </div>
@@ -192,7 +223,7 @@ export function CalendarView() {
       )}
       <p className={styles.note}>
         {showSample ? "Ejemplo sintético de 12 publicaciones. " : ""}
-        {monthCount} en {monthLabel}. Los cambios de día se ven aquí, pero todavía no se guardan: al recargar vuelve el reparto original.
+        {monthCount} en {monthLabel}. Los cambios de día de los planes guardados se persisten; los movimientos del ejemplo sintético duran esta sesión.
       </p>
     </section>
   );

@@ -69,6 +69,18 @@ _PROBLEM = CopyApproach(
     safeguard="Agitation must not exaggerate harm; testimony, offer and response sections require evidence.",
 )
 
+FORMULA_CODES = ("AIDA", "PAS", "4CS", "BAB", "4PS", "OPEN_LOOP")
+
+_BY_CODE: dict[str, CopyApproach] = {
+    "AIDA": _DIRECT,
+    "PAS": _PROBLEM,
+    "4CS": _EDUCATIONAL,
+    "BAB": _NARRATIVE,
+    "4PS": _DIRECT_PROOF,
+    "OPEN_LOOP": _DISRUPTIVE,
+}
+_NEEDS_EVIDENCE = {"PAS", "BAB", "4PS"}
+
 _SIGNALS: list[tuple[str, tuple[str, ...]]] = [
     ("problem", ("problema", "dolor", "solucion", "evitar", "error", "problem", "pain point")),
     ("narrative", ("experiencia", "historia", "testimonio", "cliente", "transform", "antes y despues", "story", "testimonial")),
@@ -112,6 +124,24 @@ def select_copy_approach(brief: GuidedBrief) -> tuple[CopyApproach, str] | None:
     return None
 
 
+def approach_for_formula(code: str, brief: GuidedBrief) -> tuple[CopyApproach, str]:
+    """Resolve a human-selected formula and flag when its evidence is missing."""
+
+    normalized = code.upper().replace(" ", "")
+    if normalized not in _BY_CODE:
+        raise ValueError(f"unknown copy formula: {code}")
+    approach = _BY_CODE[normalized]
+    rationale = f"Fórmula {approach.formula} seleccionada en la revisión."
+    if normalized in _NEEDS_EVIDENCE and not any(
+        fact.status == "CONFIRMED" for fact in brief.facts
+    ):
+        rationale += (
+            " El brief no tiene hechos confirmados; el borrador debe mantener "
+            "un planteamiento general, sin datos ni pruebas concretas."
+        )
+    return approach, rationale
+
+
 def approach_prompt_block(approach: CopyApproach) -> str:
     """Prompt guidance: an optional scaffold, never a source of facts."""
 
@@ -124,4 +154,10 @@ def approach_prompt_block(approach: CopyApproach) -> str:
     )
 
 
-__all__ = ["CopyApproach", "approach_prompt_block", "select_copy_approach"]
+__all__ = [
+    "FORMULA_CODES",
+    "CopyApproach",
+    "approach_for_formula",
+    "approach_prompt_block",
+    "select_copy_approach",
+]

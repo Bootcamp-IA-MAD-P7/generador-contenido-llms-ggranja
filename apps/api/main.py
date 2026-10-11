@@ -1,25 +1,28 @@
 """Minimal provider-independent API foundation."""
 
+from datetime import date
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from apps.api.auth import AuthSettings, authenticate, issue_token, require_session
+from apps.api.copy_formulas import approach_for_formula, select_copy_approach
 from apps.api.drafting import ChannelAdaptedDraftService, EditableTextDraft
 from apps.api.editorial_review import (
     EditorialContent,
     EditorialReviewService,
     EditorialTransitionError,
     HumanReview,
+    RegenerationRequest,
 )
 from apps.api.editorial_store import EditorialContentStore, EditorialPlanStore
 from apps.api.llm import LlmConfigurationError, build_text_generator
 from apps.api.models import GuidedBrief
 from apps.api.config import EditorialPersistenceSettings, RagLocalSettings
 from apps.api.drafting import RagGroundedDraftService
-from apps.api.editorial_planning import EditorialPlan
+from apps.api.editorial_planning import EditorialPlan, reschedule_item
 from apps.api.rag import LocalChromaIndex
 
 
@@ -38,6 +41,7 @@ class DraftRequest(BaseModel):
     brand_id: str | None = None
     business_id: str | None = None
     top_k: int = 3
+    formula: Literal["AIDA", "PAS", "4CS", "BAB", "4PS", "OPEN_LOOP"] | None = None
 
 
 class DraftResponse(BaseModel):
@@ -55,6 +59,16 @@ class ReviewRequest(BaseModel):
     decision: Literal["approve", "request_regeneration"]
     reviewer_ref: str = Field(min_length=1)
     feedback: str | None = Field(default=None, min_length=1)
+
+
+class RegenerateRequest(BaseModel):
+    """Inputs needed to regenerate one draft after human feedback was recorded."""
+
+    brief: GuidedBrief
+    feedback: str = Field(min_length=1)
+    formula: Literal["AIDA", "PAS", "4CS", "BAB", "4PS", "OPEN_LOOP"] | None = None
+    rag_enabled: bool = False
+    top_k: int = 3
 
 
 class ManualEditRequest(BaseModel):
@@ -142,6 +156,11 @@ def create_drafts(request: DraftRequest) -> DraftResponse:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
     try:
+        approach_override = (
+            approach_for_formula(request.formula, request.brief)
+            if request.formula
+            else None
+        )
         if request.rag_enabled:
             if not request.business_id:
                 raise HTTPException(
@@ -156,11 +175,14 @@ def create_drafts(request: DraftRequest) -> DraftResponse:
                     request.brief,
                     business_id=request.business_id,
                     top_k=request.top_k,
+                    approach_override=approach_override,
                 )
             except (ValueError, RuntimeError) as error:
                 raise HTTPException(status_code=503, detail=str(error)) from error
         else:
-            drafts = ChannelAdaptedDraftService(generator).draft(request.brief)
+            drafts = ChannelAdaptedDraftService(generator).draft(
+                request.brief, approach_override=approach_override
+            )
     except LlmConfigurationError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     from apps.api.config import LlmSettings
@@ -189,11 +211,10 @@ def create_drafts(request: DraftRequest) -> DraftResponse:
 
 
 def _get_editorial_content(content_id: str) -> EditorialContent:
-    """Resolve an opaque process-local ID, not an authenticated tenant scope.
+    """Resolve a record ID; session authentication does not authorize a tenant.
 
-    This MVP provides logical segregation through generated IDs and preserved
-    business metadata. It does not authenticate callers or authorize access to
-    a business, so ``content_id`` must not be treated as a tenant boundary.
+    Routes apply the signed session dependency, but this MVP still has no
+    per-business access control. Treat ``content_id`` as an identifier only.
     """
     content = editorial_store.get(content_id)
     if content is None:
@@ -242,6 +263,62 @@ def record_review(content_id: str, request: ReviewRequest) -> EditorialContent:
     return editorial_store.save(updated)
 
 
+@app.post(
+    "/drafts/{content_id}/regenerate",
+    response_model=EditorialContent,
+    dependencies=[Depends(require_session)],
+)
+def regenerate_draft(content_id: str, request: RegenerateRequest) -> EditorialContent:
+    """Regenerate from the exact recorded feedback without approving the result."""
+
+    content = _get_editorial_content(content_id)
+    if not request.feedback.strip():
+        raise HTTPException(status_code=422, detail="feedback must contain text")
+    if request.top_k <= 0:
+        raise HTTPException(status_code=422, detail="top_k must be positive")
+    brief = request.brief.model_copy(update={"platforms": [content.draft.channel]})
+    approach = (
+        approach_for_formula(request.formula, brief)
+        if request.formula
+        else select_copy_approach(brief)
+    )
+
+    try:
+        generator = build_text_generator()
+    except LlmConfigurationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+    def draft_factory(
+        source: EditorialContent, _regeneration: RegenerationRequest
+    ) -> EditableTextDraft:
+        if request.rag_enabled:
+            if not source.business_id:
+                raise ValueError("business_id is required when rag_enabled=true")
+            index = LocalChromaIndex(RagLocalSettings())
+            return RagGroundedDraftService(index, generator).draft(
+                brief,
+                business_id=source.business_id,
+                top_k=request.top_k,
+                approach_override=approach,
+                reviewer_feedback=request.feedback,
+            )[0]
+        return ChannelAdaptedDraftService(generator).draft(
+            brief,
+            approach_override=approach,
+            reviewer_feedback=request.feedback,
+        )[0]
+
+    try:
+        regenerated = EditorialReviewService.regenerate(
+            content,
+            RegenerationRequest(trigger="human_feedback", feedback=request.feedback),
+            draft_factory=draft_factory,
+        )
+    except EditorialTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    return editorial_store.create(regenerated)
+
+
 @app.patch("/drafts/{content_id}", response_model=EditorialContent, dependencies=[Depends(require_session)])
 def edit_draft(content_id: str, request: ManualEditRequest) -> EditorialContent:
     content = _get_editorial_content(content_id)
@@ -259,6 +336,10 @@ class StoredEditorialPlan(BaseModel):
 
     plan_id: str
     plan: EditorialPlan
+
+
+class PlanItemDayRequest(BaseModel):
+    day: date
 
 
 @app.post("/plans", response_model=StoredEditorialPlan, dependencies=[Depends(require_session)])
@@ -284,3 +365,26 @@ def list_plans() -> list[StoredEditorialPlan]:
         StoredEditorialPlan(plan_id=plan_id, plan=plan)
         for plan_id, plan in editorial_plan_store.list()
     ]
+
+
+@app.patch(
+    "/plans/{plan_id}/items/{item_index}/day",
+    response_model=StoredEditorialPlan,
+    dependencies=[Depends(require_session)],
+)
+def update_plan_item_day(
+    plan_id: str,
+    request: PlanItemDayRequest,
+    item_index: int = Path(ge=0),
+) -> StoredEditorialPlan:
+    plan = editorial_plan_store.get(plan_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="plan_id not found")
+    try:
+        updated = reschedule_item(plan, item_index, request.day)
+    except IndexError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    editorial_plan_store.save(plan_id, updated)
+    return StoredEditorialPlan(plan_id=plan_id, plan=updated)

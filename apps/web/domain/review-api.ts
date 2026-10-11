@@ -3,6 +3,7 @@ import type { BriefForm, DraftEvidence } from "./types.ts";
 
 export type ApiEditorialState = "generated_draft" | "pending_human_review" | "approved_final";
 export type ReviewDecision = "approve" | "request_regeneration";
+export type FormulaCode = "AIDA" | "PAS" | "4CS" | "BAB" | "4PS" | "OPEN_LOOP";
 export type ApiDraft = {
   template_id: string;
   template_version: string;
@@ -24,6 +25,13 @@ export type ApiEditorialContent = {
   brand_id?: string | null;
   business_id?: string | null;
   review?: { decision: ReviewDecision; reviewer_ref: string; feedback?: string | null } | null;
+  lineage?: {
+    source_draft_id: string;
+    trigger: "human_feedback" | "changed_inputs";
+    feedback?: string | null;
+    changed_inputs: Record<string, unknown>;
+    source_text_fingerprint: string;
+  } | null;
 };
 export type DraftApiResponse = {
   detail?: string;
@@ -78,10 +86,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
-export function createDraft(body: { brief: ReturnType<typeof mapBriefToApi>; brandId?: string; businessId?: string; ragEnabled: boolean }) {
+export function createDraft(body: { brief: ReturnType<typeof mapBriefToApi>; brandId?: string; businessId?: string; ragEnabled: boolean; formula?: FormulaCode }) {
   return request<DraftApiResponse>("/drafts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
     brief: body.brief, rag_enabled: body.ragEnabled, ...(body.brandId ? { brand_id: body.brandId } : {}),
     ...(body.businessId ? { business_id: body.businessId, top_k: 3 } : {}),
+    ...(body.formula ? { formula: body.formula } : {}),
   }) });
 }
 export function getDraft(contentId: string) { return request<ApiEditorialContent>(`/drafts/${encodeURIComponent(contentId)}`); }
@@ -92,3 +101,22 @@ export function updateDraft(contentId: string, caption: string) { return request
 export function reviewDraft(contentId: string, decision: ReviewDecision, reviewerRef: string, feedback?: string) { return request<ApiEditorialContent>(`/drafts/${encodeURIComponent(contentId)}/review`, {
   method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision, reviewer_ref: reviewerRef, ...(feedback !== undefined ? { feedback } : {}) }),
 }); }
+export function regenerateDraft(contentId: string, body: {
+  brief: ReturnType<typeof mapBriefToApi>;
+  feedback: string;
+  formula?: FormulaCode;
+  businessId?: string;
+  ragEnabled: boolean;
+}) {
+  return request<ApiEditorialContent>(`/drafts/${encodeURIComponent(contentId)}/regenerate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      brief: body.brief,
+      feedback: body.feedback,
+      rag_enabled: body.ragEnabled,
+      ...(body.formula ? { formula: body.formula } : {}),
+      ...(body.businessId ? { top_k: 3 } : {}),
+    }),
+  });
+}

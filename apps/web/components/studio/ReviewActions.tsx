@@ -7,11 +7,13 @@ export function ReviewActions({
   onApprove,
   onRequestChanges,
   onResubmit,
+  isRegenerating,
 }: {
   status: DraftPreparationStatus;
   onApprove: () => void;
   onRequestChanges: () => void;
   onResubmit: () => void;
+  isRegenerating: boolean;
 }) {
   if (status === "pending-review") {
     return (
@@ -24,7 +26,9 @@ export function ReviewActions({
   if (status === "changes-requested") {
     return (
       <div className={styles.actions}>
-        <button type="button" className={styles.action} onClick={onResubmit}>Enviar cambios a revisión</button>
+        <button type="button" className={styles.action} onClick={onResubmit} disabled={isRegenerating}>
+          {isRegenerating ? "Regenerando…" : "Regenerar"}
+        </button>
       </div>
     );
   }

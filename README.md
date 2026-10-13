@@ -1,137 +1,62 @@
-# LLM Content Generation MVP
+# Generador de contenido LLMs · G. Granja
 
-![Status](https://img.shields.io/badge/status-in_development-orange)
-[![Development branch](https://img.shields.io/badge/branch-dev-blue)](https://github.com/gabrielagranja/generador-contenido-llms/tree/dev)
-![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white)
-![Next.js](https://img.shields.io/badge/Web-Next.js-000000?logo=nextdotjs&logoColor=white)
-![LangChain](https://img.shields.io/badge/LLM-LangChain-1C3C3C)
-![SDD](https://img.shields.io/badge/SDD-OpenSpec-6D28D9)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Web-Next.js-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![LangChain](https://img.shields.io/badge/IA-LangChain-1C3C3C)](https://www.langchain.com/)
+[![Estado](https://img.shields.io/badge/estado-demo_local-orange)](https://github.com/Bootcamp-IA-MAD-P7/generador-contenido-llms-ggranja)
 
-An application that turns a brief and business knowledge into **editable content for Instagram and Facebook**, with human review before publication.
+Aplicación para preparar borradores de contenido para redes sociales a partir de un brief y la información de un negocio. Esta copia se entrega en la organización [Bootcamp-IA-MAD-P7](https://github.com/Bootcamp-IA-MAD-P7).
 
-## Who it is for
+## Arranque local
 
-The primary user is the **Digital Content Manager**: the person responsible for planning, creating, reviewing and coordinating digital content across a local-business network.
+Requisitos: Python 3.11 o superior, Node.js 22 y npm.
 
-The MVP uses **Coll Amunt!, a Catalan traders' association with more than 20 local businesses**, as its example context. It starts with one representative business to validate the workflow before expanding across the association. Business owners can contribute information and review content; their customers and local community are the audience.
+Desde la raíz del repositorio, prepara el entorno y arranca la API:
 
-## More than a content generator
-
-Coordinating an association's communication requires reliable business information, a consistent editorial voice and balanced visibility across members. Generating isolated posts does not address that whole workflow.
-
-The product direction is an **intelligent editorial management tool for local-business networks**: help the person responsible decide **what to communicate, for whom, why now and with what supporting evidence**.
-
-- **Maintain useful knowledge:** reusable business profiles, products, services, stories and tone guidance.
-- **Ground drafts in evidence:** retrieve approved context with traceable sources instead of inventing business facts.
-- **Support editorial planning:** eventually coordinate themes, campaigns and a balanced rotation of businesses.
-- **Learn from history:** eventually use publication history and authorized performance data to inform future planning.
-
-The MVP validates the brief-to-reviewed-content workflow first. Editorial planning and performance feedback are future stages requiring approved scope and contracts. The content manager retains editorial responsibility and the final publishing decision.
-
-## MVP scope
-
-- Capture a structured brief with topic, audience, channel and business context.
-- Draft and revise copy for single-image posts, carousels and Reels.
-- Retrieve approved business information through **RAG** to ground drafts.
-- Generate one image for an Instagram feed-post preview; carousels and Reels receive creative plans.
-- Enter briefs and request revisions through an optional voice mode.
-- Connect one Instagram Professional account through OAuth and publish **only after explicit human approval**.
-
-Facebook is a content-generation and adaptation channel; direct Facebook publishing is outside the MVP. Stories and LinkedIn are deferred.
-
-## Planned stack and APIs
-
-| Layer | Technology | Purpose |
-|---|---|---|
-| Frontend | Next.js · React · TypeScript | Briefs, editing, previews and approval |
-| Backend | Python 3.11+ · FastAPI · Pydantic | Validation and service orchestration |
-| LLM framework | LangChain | Prompts, provider adapters and RAG workflow |
-| Text | Groq API · Gemini API | Groq as primary provider; Gemini for comparison |
-| RAG | Local Chroma · local multilingual embeddings | Retrieve approved business context |
-| Data | SQLite · SQLAlchemy | Profiles, drafts and metadata |
-| Images | Gemini API · Gemini 3.1 Flash Image | Generate an image for review |
-| Voice | Gemini Live API | Spoken briefs and draft revisions |
-| Publishing | Instagram Platform API · OAuth | Publish approved content to a professional account |
-| Quality and environment | pytest · GitHub Actions · Docker Compose | Testing and reproducible setup |
-
-**LangChain coordinates the workflow; Groq and Gemini run the models.** Integrations are delivered in stages under approved contracts. See the [technology stack](docs/architecture/technology-stack.md) for details.
-
-## How it works
-
-Target MVP workflow:
-
-```mermaid
-flowchart TD
-    U["Digital Content Manager"] --> W["Next.js: brief and review"]
-    W --> A["FastAPI"]
-    A --> L["LangChain"]
-    R["RAG: approved context"] --> L
-    L --> M["Groq / Gemini"]
-    M --> D["Text draft"]
-    A --> V["Gemini: image and voice"]
-    V --> D
-    D --> H["Human review and approval"]
-    H --> I["Instagram API: publish"]
-    H --> F["Facebook: copy for manual use"]
-```
-
-RAG adds business evidence to generation:
-
-```mermaid
-flowchart TD
-    B["Approved business information"] --> E["Chunks and local embeddings"]
-    E --> C["Chroma"]
-    Q["Brief query"] --> S["Semantic search"]
-    C --> S
-    S --> K["Relevant context and sources"]
-    K --> L["LangChain + LLM"]
-    Q --> L
-    L --> D["Grounded draft for review"]
-```
-
-## Current status
-
-The web/API foundation is implemented: **FastAPI/Pydantic, a Next.js client and a readiness endpoint**. The API exposes `POST /drafts` through a provider-neutral **LangChain** boundary: it stays on the deterministic offline mock by default and can use Groq locally when `LLM_PROVIDER=groq` and `GROQ_API_KEY` are configured, or an explicitly installed Ollama model when `LLM_PROVIDER=ollama`. The browser never receives provider credentials.
-
-RAG, images, voice and publishing remain separate capabilities with their own scope and evidence requirements. Progress is tracked in the [roadmap](docs/roadmap.md) and [GitHub Project](https://github.com/users/gabrielagranja/projects/1).
-
-## Local demo
-
-Prepare the reproducible offline demo from the repository root:
-
-```bash
+~~~bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m pip install -r requirements.txt
 python scripts/prepare_demo.py
 python -m uvicorn apps.api.main:app --reload --host 127.0.0.1 --port 18000
-```
+~~~
 
-In a second terminal run `npm run dev` from `apps/web`, then open
-`http://localhost:3000/login`. The local-only demo credentials are
-`gabriela / gabriela`; the helper configures the deterministic `mock`
-provider and refuses non-development environments. See
-[local demo guide](docs/local-demo.md).
+En otra terminal, arranca la web:
 
-## Development and source of truth
+~~~bash
+cd apps/web
+npm ci
+npm run dev
+~~~
 
-Development targets **`dev`** and follows OpenSpec-based Specification-Driven Development: **Issue → approved contract → implementation → tests and evidence**. Every Instagram publication requires human confirmation.
+Abre [http://localhost:3000/login](http://localhost:3000/login) e inicia sesión con **gabriela / gabriela**. Son credenciales solo para la demo local. La API queda en http://127.0.0.1:18000; puedes comprobarla en /readiness. La demo usa el proveedor determinista mock y solo escucha en localhost.
 
-The **official assessment rubric is part of the project's source of truth**:
+## Pruebas
 
-| Competence | Weight |
-|---|---:|
-| C1 · Communication | 12% |
-| C2 · Project management with version control | 16% |
-| C3 · Team management | 18% |
-| C4 · NLP/AI model | 54% |
+~~~bash
+python -m pytest -q --import-mode=importlib tests
+~~~
 
-C4 requires **LLM models, an LLM application framework and a RAG architecture**: three indicators worth 18% each. Image generation, model comparison and Docker are product choices.
+~~~bash
+cd apps/web
+npm test
+npm run typecheck
+~~~
 
-Reference documents:
+## Alcance y límites
 
-- [Vision and user](docs/project-charter.md) · [MVP scope](docs/scope.md)
-- [Rubric and traceability](docs/rubric-traceability.md) · [Evaluation plan](docs/evaluation-plan.md)
-- [Roadmap](docs/roadmap.md) · [Decisions](docs/decisions/) · [Open questions](docs/assumptions.md)
-- [OpenSpec contracts](openspec/) · [Contributing guide](CONTRIBUTING.md) · [Daily logs](docs/daily/)
-- [Issues](https://github.com/gabrielagranja/generador-contenido-llms/issues) · [Project board](https://github.com/users/gabrielagranja/projects/1)
+La entrega permite recorrer el flujo local de brief y borrador con API FastAPI, interfaz Next.js y proveedor simulado. El repositorio incluye evidencia de LangChain y RAG; la demo offline no demuestra llamadas a proveedores reales.
 
-**Delivery:** 13 October 2026 at 12:00, Europe/Madrid. **Technical presentation:** 14 October 2026.
+No están disponibles en esta demo las integraciones reales de Groq/Ollama, generación de imágenes, voz ni OAuth/publicación en Instagram. Quedan fuera de la primera entrega las Stories, LinkedIn, autopublicación en Facebook, campañas desatendidas y gestión multiempresa. Tampoco se entregan carruseles como conjuntos completos de imágenes ni vídeos Reel renderizados.
+
+## Evidencia frente a la rúbrica
+
+| Competencia | Peso | Estado resumido |
+|---|---:|---|
+| C1 · Comunicación | 12% | Evidencias documentadas. |
+| C2 · Gestión del proyecto y control de versiones | 16% | Mayormente evidenciado; queda pendiente la verificación completa de una instalación limpia. |
+| C3 · Gestión de equipos | 18% | Parcial; faltan evidencias de roles, actas, retrospectivas y estimaciones/priorización. |
+| C4 · NLP / IA | 54% | LangChain y RAG evidenciados; la integración de modelos LLM sigue parcial mientras falten pruebas reales de proveedor. |
+
+La autoevaluación conservadora del proyecto es **68/100 provisional**, no una nota oficial. Consulta el [seguimiento detallado de la rúbrica](docs/rubric-traceability.md), la [autoevaluación](docs/self-assessment-2026-10-13.md), el [alcance](docs/scope.md) y la [guía de demo local](docs/local-demo.md).

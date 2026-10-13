@@ -96,6 +96,21 @@ The web/API foundation is implemented: **FastAPI/Pydantic, a Next.js client and 
 
 RAG, images, voice and publishing remain separate capabilities with their own scope and evidence requirements. Progress is tracked in the [roadmap](docs/roadmap.md) and [GitHub Project](https://github.com/users/gabrielagranja/projects/1).
 
+## Local demo
+
+Prepare the reproducible offline demo from the repository root:
+
+```bash
+python scripts/prepare_demo.py
+python -m uvicorn apps.api.main:app --reload --host 127.0.0.1 --port 18000
+```
+
+In a second terminal run `npm run dev` from `apps/web`, then open
+`http://localhost:3000/login`. The local-only demo credentials are
+`gabriela / gabriela`; the helper configures the deterministic `mock`
+provider and refuses non-development environments. See
+[local demo guide](docs/local-demo.md).
+
 ## Development and source of truth
 
 Development targets **`dev`** and follows OpenSpec-based Specification-Driven Development: **Issue → approved contract → implementation → tests and evidence**. Every Instagram publication requires human confirmation.

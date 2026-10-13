@@ -89,6 +89,7 @@ class EditorialContent(BaseModel):
     content_id: str = Field(min_length=1)
     state: EditorialState
     draft: EditableTextDraft
+    owner_username: str | None = None
     brand_id: str | None = None
     business_id: str | None = None
     review: HumanReview | None = None
@@ -113,6 +114,7 @@ class EditorialReviewService:
         draft: EditableTextDraft,
         *,
         content_id: str,
+        owner_username: str | None = None,
         brand_id: str | None = None,
         business_id: str | None = None,
     ) -> EditorialContent:
@@ -122,6 +124,7 @@ class EditorialReviewService:
             content_id=content_id,
             state="generated_draft",
             draft=draft,
+            owner_username=owner_username,
             brand_id=brand_id,
             business_id=business_id,
         )
@@ -235,6 +238,7 @@ class EditorialReviewService:
         regenerated = cls.from_generated_draft(
             preserved_draft,
             content_id=f"{content.content_id}:regenerated:{uuid4().hex}",
+            owner_username=content.owner_username,
             brand_id=content.brand_id,
             business_id=content.business_id,
         )

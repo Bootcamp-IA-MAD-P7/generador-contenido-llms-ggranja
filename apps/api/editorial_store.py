@@ -57,12 +57,20 @@ class EditorialContentStore:
     def create_id(self) -> str:
         return uuid4().hex
 
-    def get(self, content_id: str) -> EditorialContent | None:
+    def get(self, content_id: str, *, owner_username: str | None = None) -> EditorialContent | None:
         with self._connection() as connection:
             row = connection.execute(
                 "SELECT payload FROM editorial_content WHERE content_id = ?", (content_id,)
             ).fetchone()
-        return EditorialContent.model_validate_json(row[0]) if row else None
+        content = EditorialContent.model_validate_json(row[0]) if row else None
+        if (
+            content is not None
+            and owner_username is not None
+            and content.owner_username is not None
+            and content.owner_username.casefold() != owner_username.casefold()
+        ):
+            return None
+        return content
 
     def save(self, content: EditorialContent) -> EditorialContent:
         with self._connection() as connection:
@@ -119,19 +127,35 @@ class EditorialPlanStore:
             )
         return plan
 
-    def get(self, plan_id: str) -> EditorialPlan | None:
+    def get(self, plan_id: str, *, owner_username: str | None = None) -> EditorialPlan | None:
         with self._connection() as connection:
             row = connection.execute(
                 "SELECT payload FROM editorial_plan WHERE plan_id = ?", (plan_id,)
             ).fetchone()
-        return EditorialPlan.model_validate_json(row[0]) if row else None
+        plan = EditorialPlan.model_validate_json(row[0]) if row else None
+        if (
+            plan is not None
+            and owner_username is not None
+            and plan.owner_username is not None
+            and plan.owner_username.casefold() != owner_username.casefold()
+        ):
+            return None
+        return plan
 
-    def list(self) -> list[tuple[str, EditorialPlan]]:
+    def list(self, *, owner_username: str | None = None) -> list[tuple[str, EditorialPlan]]:
         with self._connection() as connection:
             rows = connection.execute(
                 "SELECT plan_id, payload FROM editorial_plan ORDER BY plan_id"
             ).fetchall()
-        return [(plan_id, EditorialPlan.model_validate_json(payload)) for plan_id, payload in rows]
+        plans = [(plan_id, EditorialPlan.model_validate_json(payload)) for plan_id, payload in rows]
+        if owner_username is None:
+            return plans
+        return [
+            (plan_id, plan)
+            for plan_id, plan in plans
+            if plan.owner_username is None
+            or plan.owner_username.casefold() == owner_username.casefold()
+        ]
 
 
 __all__ = ["EditorialContentStore", "EditorialPlanStore"]

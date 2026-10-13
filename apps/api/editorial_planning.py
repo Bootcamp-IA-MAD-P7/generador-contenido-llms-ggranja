@@ -145,6 +145,7 @@ class EditorialPlan(BaseModel):
     starts_on: date
     ends_on: date
     targets: dict[str, int]
+    owner_username: str | None = None
     items: tuple[PlannedItem, ...] = ()
 
     @field_validator("strategy_id", "strategy_version")
@@ -170,6 +171,8 @@ class EditorialPlan(BaseModel):
     def validate_plan(self) -> "EditorialPlan":
         if self.ends_on < self.starts_on:
             raise ValueError("ends_on must not precede starts_on")
+        if self.owner_username is not None and not self.owner_username.strip():
+            raise ValueError("owner_username cannot be blank")
         if sum(self.targets.values()) != self.total_slots:
             raise ValueError("target counts must sum to total_slots")
         if len(self.items) > self.total_slots:

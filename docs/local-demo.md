@@ -69,6 +69,6 @@ cd apps/web && npm test && npm run typecheck
 ## Proveedores reales
 
 La demo inicial usa `LLM_PROVIDER=mock` para ser reproducible. Para probar Groq
-u Ollama después, modificar solo la configuración local siguiendo
-`docs/demo-groq-ollama.md`, reiniciar la API y repetir el mismo brief. No incluir
-claves ni tokens en capturas, commits o documentación.
+u Ollama después, modificar solo la configuración local, reiniciar la API y
+repetir el mismo brief. No incluir claves ni tokens en capturas, commits o
+documentación.
